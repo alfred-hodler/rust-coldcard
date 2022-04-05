@@ -1,0 +1,19 @@
+[package]
+name = "coldcard-cli"
+version = "0.2.0"
+edition = "2021"
+authors = ["Alfred Hodler <alfred_hodler AT protonmail DOT com>"]
+license = "MIT"
+repository = "https://github.com/alfred-hodler/rust-coldcard/"
+description = "Coldcard Wallet CLI Tool"
+keywords = ["coldcard", "bitcoin", "wallet"]
+categories = ["command-line-utilities", "cryptography::cryptocurrencies", "hardware-support"]
+
+[dependencies]
+coldcard = { path = "../coldcard" }
+base64 = "0.13.0"
+clap = { version = "3.1.6", features = ["derive"] }
+hex = "0.4.3"
+hmac-sha256 = "1.1.2"
+json = "0.12.4"
+rpassword = "6.0.1"

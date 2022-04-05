@@ -1,0 +1,17 @@
+[package]
+name = "coldcard"
+version = "0.2.0"
+edition = "2021"
+authors = ["Alfred Hodler <alfred_hodler AT protonmail DOT com>"]
+license = "MIT"
+repository = "https://github.com/alfred-hodler/rust-coldcard/"
+description = "Coldcard Wallet Interface Library in Rust"
+keywords = ["coldcard", "bitcoin", "wallet"]
+categories = ["command-line-utilities", "cryptography::cryptocurrencies", "hardware-support"]
+
+[dependencies]
+aes-ctr = "0.6.0"
+base58 = "0.2.0"
+enum-as-inner = "0.4.0"
+hidapi = { version = "1.3.3", default-features = false, features = ["linux-static-hidraw"] }
+secp256k1 = { version = "0.22.1", features = ["rand-std", "bitcoin_hashes"] }
