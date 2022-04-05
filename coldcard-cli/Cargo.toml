@@ -10,7 +10,7 @@ keywords = ["coldcard", "bitcoin", "wallet"]
 categories = ["command-line-utilities", "cryptography::cryptocurrencies", "hardware-support"]
 
 [dependencies]
-coldcard = { path = "../coldcard" }
+coldcard = { version = "0.2.0", path = "../coldcard" }
 base64 = "0.13.0"
 clap = { version = "3.1.6", features = ["derive"] }
 hex = "0.4.3"
