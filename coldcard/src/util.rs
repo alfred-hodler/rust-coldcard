@@ -1,3 +1,4 @@
+//! Miscellaneous utility functions.
 use secp256k1::hashes;
 use secp256k1::hashes::{Hash, HashEngine};
 

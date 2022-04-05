@@ -1,3 +1,4 @@
+//! Various constants used by the Coldcard.
 pub const AFC_PUBKEY: u8 = 0x01;
 pub const AFC_SEGWIT: u8 = 0x02;
 pub const AFC_BECH32: u8 = 0x04;

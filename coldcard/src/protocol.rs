@@ -1,3 +1,4 @@
+//! Codec and protocol module.
 pub mod derivation_path;
 
 pub use derivation_path::DerivationPath;

@@ -1,3 +1,34 @@
+//! # Coldcard interface library in Rust.
+//!
+//! This library provides interfacing functionality for the Coldcard hardware wallet.
+//! It automatically sets up an encrypted communication channel using ECDH
+//! that cannot be turned off, so MITM mitigation is possible out of the box
+//! using the `check_mitm` method.
+//!
+//! It does not validate that a particular function is available on a particular
+//! Coldcard (due to firmware differences), so that is left to the user to explore.
+//!
+//! ```no_run
+//! use coldcard::{self, protocol};
+//! // detect all connected Coldcards
+//! let serials = coldcard::detect()?;
+//!
+//! //open a particular one
+//! let mut coldcard = serials[0].open()?;
+//!
+//! // set a passphrase
+//! coldcard.set_passphrase(protocol::Passphrase::new("secret")?)?;
+//!
+//! // after the user confirms
+//! let xpub = coldcard.get_passphrase_done()?;
+//!
+//! if let Some(xpub) = xpub {
+//!    println!("The new XPUB is: {}", xpub);
+//! }
+//!
+//! // secure logout
+//! coldcard.logout()?;
+//! ```
 pub mod constants;
 pub mod firmware;
 pub mod protocol;
@@ -21,6 +52,7 @@ pub fn detect() -> Result<Vec<SerialNumber>, Error> {
 }
 
 /// Represents a particular Coldcard serial number.
+#[derive(Debug)]
 pub struct SerialNumber(String);
 
 impl SerialNumber {

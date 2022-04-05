@@ -1,3 +1,4 @@
+//! Derivation path module.
 use std::fmt::Write;
 
 /// BIP32 derivation path.

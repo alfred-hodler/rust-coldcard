@@ -11,11 +11,13 @@ $ cargo install coldcard-cli
 
 Usage:
 ```bash
-coldcard-cli 0.2.0
+$ coldcard --help
+
+coldcard-cli 0.2.1
 Coldcard Wallet CLI Tool
 
 USAGE:
-    coldcard-cli [OPTIONS] <SUBCOMMAND>
+    coldcard [OPTIONS] <SUBCOMMAND>
 
 OPTIONS:
     -h, --help               Print help information

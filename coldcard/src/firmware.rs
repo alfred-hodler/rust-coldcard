@@ -1,3 +1,4 @@
+//! Firmware and upgrade related module.
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;

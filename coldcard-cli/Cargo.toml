@@ -1,6 +1,6 @@
 [package]
 name = "coldcard-cli"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 authors = ["Alfred Hodler <alfred_hodler AT protonmail DOT com>"]
 license = "MIT"
@@ -9,8 +9,12 @@ description = "Coldcard Wallet CLI Tool"
 keywords = ["coldcard", "bitcoin", "wallet"]
 categories = ["command-line-utilities", "cryptography::cryptocurrencies", "hardware-support"]
 
+[[bin]]
+name = "coldcard"
+path = "src/main.rs"
+
 [dependencies]
-coldcard = { version = "0.2.0", path = "../coldcard" }
+coldcard = { version = "0.2.1", path = "../coldcard" }
 base64 = "0.13.0"
 clap = { version = "3.1.6", features = ["derive"] }
 hex = "0.4.3"
