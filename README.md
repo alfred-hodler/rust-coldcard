@@ -2,6 +2,8 @@
 
 This is a workspace that contains projects used for interfacing with the [Coldcard](https://coldcard.com/) hardware wallet.
 
+![Project Logo](logo.png)
+
 The projects are as follows:
 
 `coldcard` - the library for integration with Rust projects
