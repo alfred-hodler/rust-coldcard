@@ -231,7 +231,7 @@ fn main() -> Result<(), Error> {
     }
     .ok_or(coldcard::Error::NoColdcard)?;
 
-    let (mut cc, xpub_info) = sn.open()?;
+    let (mut cc, xpub_info) = sn.open(None)?;
 
     // check for MITM if requested
     let expected_xpub = cli.xpub;

@@ -14,7 +14,7 @@
 //! let serials = coldcard::detect()?;
 //!
 //! //open a particular one
-//! let mut coldcard = serials[0].open()?;
+//! let mut coldcard = serials[0].open(None)?;
 //!
 //! // set a passphrase
 //! coldcard.set_passphrase(protocol::Passphrase::new("secret")?)?;
@@ -40,6 +40,18 @@ use protocol::{DerivationPath, Request, Response, Username};
 const COINKITE_VID: u16 = 0xd13e;
 const CKCC_PID: u16 = 0xcc10;
 
+/// Specifies various options that a Coldcard can be opened with.
+#[derive(Debug)]
+pub struct Options {
+    pub encrypt_version: u32,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Self { encrypt_version: 1 }
+    }
+}
+
 /// Detects connected Coldcard devices and returns a vector of their serial numbers.
 pub fn detect() -> Result<Vec<SerialNumber>, Error> {
     let serials: Vec<_> = hidapi::HidApi::new()?
@@ -56,10 +68,9 @@ pub fn detect() -> Result<Vec<SerialNumber>, Error> {
 pub struct SerialNumber(String);
 
 impl SerialNumber {
-    /// Opens a Coldcard with a particular serial number. Optionally with
-    /// an expected xpub for anti-MITM.
-    pub fn open(&self) -> Result<(Coldcard, Option<XpubInfo>), Error> {
-        Coldcard::open(&self.0)
+    /// Opens a Coldcard with a particular serial number and optionally some options.
+    pub fn open(&self, opts: Option<Options>) -> Result<(Coldcard, Option<XpubInfo>), Error> {
+        Coldcard::open(&self.0, opts)
     }
 
     /// The string value of this serial number.
@@ -118,10 +129,14 @@ pub struct Coldcard {
 }
 
 impl Coldcard {
-    /// Opens a Coldcard with a particular serial number. If no serial number is known,
-    /// use the `SerialNumber` type to detect connected Coldcard devices. Also returns
-    /// an optional `XpubInfo` in case the device is already initialized with a secret.
-    pub fn open(sn: impl AsRef<str>) -> Result<(Self, Option<XpubInfo>), Error> {
+    /// Opens a Coldcard with a particular serial number and optionally some options.
+    /// If no serial number is known, use the `SerialNumber` type to detect connected
+    /// Coldcard devices. Also returns an optional `XpubInfo` in case the device is
+    /// already initialized with a secret.
+    pub fn open(
+        sn: impl AsRef<str>,
+        opts: Option<Options>,
+    ) -> Result<(Self, Option<XpubInfo>), Error> {
         let mut cc = HidApi::new()?.open_serial(COINKITE_VID, CKCC_PID, sn.as_ref())?;
 
         let mut read_buf = [0_u8; 64];
@@ -136,7 +151,7 @@ impl Coldcard {
 
         let encrypt_start = Request::EncryptStart {
             device_pubkey: our_pk.serialize_uncompressed()[1..].try_into().unwrap(),
-            version: None,
+            version: opts.map(|o| o.encrypt_version),
         };
 
         send(encrypt_start, &mut cc, None, &mut send_buf)?;
