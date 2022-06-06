@@ -4,11 +4,11 @@
 [![Crates.io](https://img.shields.io/crates/v/coldcard.svg)](https://crates.io/crates/coldcard)
 [![License](https://img.shields.io/crates/l/coldcard.svg)](https://github.com/alred-hodler/rust-coldcard/blob/master/coldcard/LICENSE)
 
-This is a workspace that contains projects used for interfacing with the [Coldcard](https://coldcard.com/) hardware wallet.
+This is a workspace that contains crates used for interfacing with the [Coldcard](https://coldcard.com/) hardware wallet.
 
 ![Project Logo](logo.png)
 
-The projects are as follows:
+The crates are as follows:
 
 `coldcard` - the library for integration with Rust projects
 
