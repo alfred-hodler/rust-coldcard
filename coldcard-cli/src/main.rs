@@ -1,3 +1,5 @@
+mod remote;
+
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
@@ -19,6 +21,18 @@ struct Cli {
     /// The Coldcard serial number to operate on (default: first one found)
     #[clap(long)]
     serial: Option<String>,
+
+    /// The .onion address representing a remote Coldcard to connect to
+    #[clap(long)]
+    hidden_service: Option<String>,
+
+    /// The authentication password for a remote Coldcard service
+    #[clap(long)]
+    password: Option<String>,
+
+    /// The socks5 port of the local Tor proxy when executing a remote command
+    #[clap(long, default_value = "9150")]
+    socks_port: u16,
 
     /// Perform a MITM check against an xpub
     #[clap(long)]
@@ -117,6 +131,12 @@ enum Command {
     /// Reboot the Coldcard
     Reboot,
 
+    /// Bind the Coldcard to a V3 Tor Hidden Service for remote interaction
+    Server {
+        /// The UTF-8 encoded password for accessing the service
+        password: String,
+    },
+
     /// Sign a spending PSBT transaction
     Sign {
         /// The path to the PSBT file to sign
@@ -193,7 +213,7 @@ enum AuthMode {
     HMAC,
 }
 
-#[derive(clap::ArgEnum, Clone)]
+#[derive(clap::ArgEnum, Clone, serde::Serialize, serde::Deserialize)]
 enum SignMode {
     /// Visualize only, no signing
     Visualize,
@@ -213,9 +233,27 @@ impl From<AuthMode> for protocol::AuthMode {
     }
 }
 
+impl From<&SignMode> for coldcard::SignMode {
+    fn from(mode: &SignMode) -> Self {
+        match mode {
+            SignMode::Visualize => coldcard::SignMode::Visualize,
+            SignMode::VisualizeSigned => coldcard::SignMode::VisualizeSigned,
+            SignMode::Finalize => coldcard::SignMode::Finalize,
+        }
+    }
+}
+
 fn main() -> Result<(), Error> {
     let cli = Cli::parse();
 
+    if cli.hidden_service.is_some() {
+        remote::handle(cli)
+    } else {
+        handle(cli)
+    }
+}
+
+fn handle(cli: Cli) -> Result<(), Error> {
     let serials = coldcard::detect()?;
 
     if let Command::List = cli.command {
@@ -450,6 +488,10 @@ fn main() -> Result<(), Error> {
             eprintln!("Rebooting...");
         }
 
+        Command::Server { password } => {
+            remote::listen(cc, &password)?;
+        }
+
         Command::Sign {
             psbt_in,
             psbt_out,
@@ -457,11 +499,7 @@ fn main() -> Result<(), Error> {
             base64,
         } => {
             let psbt = load_psbt(&psbt_in)?;
-            let sign_mode = match &mode {
-                SignMode::Visualize => coldcard::SignMode::Visualize,
-                SignMode::VisualizeSigned => coldcard::SignMode::VisualizeSigned,
-                SignMode::Finalize => coldcard::SignMode::Finalize,
-            };
+            let sign_mode = (&mode).into();
 
             cc.sign_psbt(&psbt, sign_mode)?;
 
@@ -642,6 +680,7 @@ enum Error {
     InvalidBase64,
     NotAuthToken,
     InvalidPSBT,
+    Remote(remote::RemoteError),
 }
 
 impl From<coldcard::Error> for Error {
@@ -677,5 +716,11 @@ impl From<protocol::EncodeError> for Error {
 impl From<std::io::Error> for Error {
     fn from(error: std::io::Error) -> Self {
         Self::Io(error)
+    }
+}
+
+impl From<remote::RemoteError> for Error {
+    fn from(error: remote::RemoteError) -> Self {
+        Self::Remote(error)
     }
 }
