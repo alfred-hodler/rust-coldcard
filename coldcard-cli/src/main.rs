@@ -26,10 +26,6 @@ struct Cli {
     #[clap(long)]
     hidden_service: Option<String>,
 
-    /// The authentication password for a remote Coldcard service
-    #[clap(long)]
-    password: Option<String>,
-
     /// The socks5 port of the local Tor proxy when executing a remote command
     #[clap(long, default_value = "9150")]
     socks_port: u16,

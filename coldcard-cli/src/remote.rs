@@ -61,7 +61,7 @@ pub(crate) fn handle(cli: Cli) -> Result<(), Error> {
         }
     }
 
-    let password = cli.password.unwrap_or_default();
+    let password = rpassword::prompt_password("Enter the password for the remote service: ")?;
 
     match cli.command {
         Command::Logout => {
