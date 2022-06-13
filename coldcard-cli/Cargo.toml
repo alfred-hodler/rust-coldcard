@@ -1,6 +1,6 @@
 [package]
 name = "coldcard-cli"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2021"
 authors = ["Alfred Hodler <alfred_hodler AT protonmail DOT com>"]
 license = "MIT"
@@ -14,10 +14,15 @@ name = "coldcard"
 path = "src/main.rs"
 
 [dependencies]
+bincode = "1.3.3"
 coldcard = { version = "0.3.0", path = "../coldcard" }
+dirs = "4.0.0"
 base64 = "0.13.0"
 clap = { version = "3.1.6", features = ["derive"] }
 hex = "0.4.3"
 hmac-sha256 = "1.1.2"
 json = "0.12.4"
+libtor = "47.7.0+0.4.7.x"
 rpassword = "6.0.1"
+serde = "1.0.137"
+socks = "0.3.4"
