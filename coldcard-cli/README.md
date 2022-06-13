@@ -26,9 +26,6 @@ OPTIONS:
         --hidden-service <HIDDEN_SERVICE>
             The .onion address representing a remote Coldcard to connect to
 
-        --password <PASSWORD>
-            The authentication password for a remote Coldcard service
-
         --serial <SERIAL>
             The Coldcard serial number to operate on (default: first one found)
 
@@ -85,7 +82,7 @@ Serving at ccbr3lbye4rrtynoih4mhbligh6ays3s2w6ns7pzp7ouvj7kg5viizad.onion:8000
 The client might then initiate remote PSBT signing:
 
 ```bash
-$ coldcard --hidden-service ccbr3lbye4rrtynoih4mhbligh6ays3s2w6ns7pzp7ouvj7kg5viizad.onion:8000 --password password123 sign ~/testnet-182b6376.psbt finalize
+$ coldcard --hidden-service ccbr3lbye4rrtynoih4mhbligh6ays3s2w6ns7pzp7ouvj7kg5viizad.onion:8000 sign ~/testnet-182b6376.psbt finalize
 ```
 
 ## Library

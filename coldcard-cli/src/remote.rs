@@ -39,7 +39,8 @@ pub(crate) fn handle(cli: Cli) -> Result<(), Error> {
 
     let target = cli.hidden_service.unwrap();
     let proxy = format!("localhost:{}", cli.socks_port);
-    let mut stream = socks::Socks5Stream::connect(&proxy, target.as_str())?;
+    let mut stream = socks::Socks5Stream::connect(&proxy, target.as_str())
+        .map_err(|_| RemoteError::TorConnectionProblem)?;
 
     fn send_receive<T>(stream: &mut T, request: RemoteRequest) -> Result<RemoteResponse, Error>
     where
@@ -159,10 +160,23 @@ pub(crate) fn listen(mut cc: Coldcard, password: &str) -> Result<(), Error> {
         .start_background();
 
     hs_dir.push("hostname");
-    let hostname = std::fs::read(hs_dir)?;
-    let hostname = String::from_utf8(hostname).expect("hostname not utf-8");
+    // wait for the keys to be generated if first time
+    let hostname = loop {
+        let hostname = std::fs::read(&hs_dir);
+        if let Ok(hostname) = hostname {
+            let hostname = String::from_utf8(hostname).expect("hostname not utf-8");
+            break hostname;
+        }
+        std::thread::sleep(std::time::Duration::from_secs(1));
+    };
 
-    println!("Serving at {}:{}", hostname.trim(), tor_port);
+    println!(
+        "------------------------------------------------------------------------------------"
+    );
+    println!("| Serving at {}:{}   |", hostname.trim(), tor_port);
+    println!(
+        "------------------------------------------------------------------------------------"
+    );
 
     fn handle(mut stream: TcpStream, cc: &mut Coldcard, password: &str) -> Result<bool, Error> {
         let mut content_len = [0_u8; 4];
@@ -244,6 +258,7 @@ pub enum RemoteError {
     BadAuth,
     Bincode(bincode::Error),
     Refused,
+    TorConnectionProblem,
 }
 
 impl From<bincode::Error> for Error {
