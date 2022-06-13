@@ -33,6 +33,10 @@ pub enum RemoteResponse {
 
 /// Handles a CLI command meant for a remote service.
 pub(crate) fn handle(cli: Cli) -> Result<(), Error> {
+    if !is_remote(&cli.command) {
+        return Err(RemoteError::NotRemoteCommand.into());
+    }
+
     let target = cli.hidden_service.unwrap();
     let proxy = format!("localhost:{}", cli.socks_port);
     let mut stream = socks::Socks5Stream::connect(&proxy, target.as_str())?;
@@ -223,6 +227,14 @@ pub(crate) fn listen(mut cc: Coldcard, password: &str) -> Result<(), Error> {
 
         // throttle incoming requests to prevent grinding attacks
         std::thread::sleep(std::time::Duration::from_secs(1));
+    }
+}
+
+fn is_remote(command: &Command) -> bool {
+    match command {
+        Command::Logout => true,
+        Command::Sign { .. } => true,
+        _ => false,
     }
 }
 
