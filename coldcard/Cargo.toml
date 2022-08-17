@@ -1,6 +1,6 @@
 [package]
 name = "coldcard"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 authors = ["Alfred Hodler <alfred_hodler AT protonmail DOT com>"]
 license = "MIT"

@@ -9,25 +9,30 @@
 //! Coldcard (due to firmware differences), so that is left to the user to explore.
 //!
 //! ```no_run
-//! use coldcard::{self, protocol};
+//! use coldcard::protocol;
+//!
+//! # fn main() -> Result<(), coldcard::Error> {
 //! // detect all connected Coldcards
 //! let serials = coldcard::detect()?;
 //!
 //! //open a particular one
-//! let mut coldcard = serials[0].open(None)?;
+//! let (mut cc, master_xpub) = serials[0].open(None)?;
 //!
 //! // set a passphrase
-//! coldcard.set_passphrase(protocol::Passphrase::new("secret")?)?;
+//! cc.set_passphrase(protocol::Passphrase::new("secret")?)?;
 //!
 //! // after the user confirms
-//! let xpub = coldcard.get_passphrase_done()?;
+//! let xpub = cc.get_passphrase_done()?;
 //!
 //! if let Some(xpub) = xpub {
 //!    println!("The new XPUB is: {}", xpub);
 //! }
 //!
 //! // secure logout
-//! coldcard.logout()?;
+//! cc.logout()?;
+//!
+//! # Ok(())
+//! # }
 //! ```
 pub mod constants;
 pub mod firmware;
@@ -562,6 +567,12 @@ impl Coldcard {
     }
 }
 
+impl std::fmt::Debug for Coldcard {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Coldcard").field("sn", &self.sn).finish()
+    }
+}
+
 /// Computes a shared session key using ECDH.
 fn session_key(sk: &secp256k1::SecretKey, pk: &secp256k1::PublicKey) -> Result<[u8; 32], Error> {
     let secp = secp256k1::Secp256k1::new();
@@ -685,6 +696,7 @@ pub enum Error {
     UnexpectedResponse(Response),
     Encoding(protocol::EncodeError),
     Decoding(protocol::DecodeError),
+    DerivationPath(protocol::derivation_path::Error),
     Hid(hidapi::HidError),
     Encryption(CryptoError),
     NoSecretOnDevice,
@@ -705,6 +717,12 @@ impl From<Response> for Error {
 impl From<protocol::EncodeError> for Error {
     fn from(error: protocol::EncodeError) -> Self {
         Self::Encoding(error)
+    }
+}
+
+impl From<protocol::derivation_path::Error> for Error {
+    fn from(error: protocol::derivation_path::Error) -> Self {
+        Self::DerivationPath(error)
     }
 }
 

@@ -46,6 +46,18 @@ impl Default for DerivationPath {
     }
 }
 
+impl TryFrom<Vec<Child>> for DerivationPath {
+    type Error = Error;
+
+    fn try_from(value: Vec<Child>) -> Result<Self, Self::Error> {
+        if value.len() > 12 {
+            Err(Error::TooDeep)
+        } else {
+            Ok(DerivationPath(value))
+        }
+    }
+}
+
 /// Derivation path child segment.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Child {

@@ -5,14 +5,13 @@
 ## Usage
 
 ```rust
-use coldcard;
 use coldcard::protocol;
 
 // detect all connected Coldcards
 let serials = coldcard::detect()?;
 
 // open a particular one
-let mut coldcard = serials[0].open()?;
+let (mut coldcard, master_xpub) = serials[0].open(None)?;
 
 // set a passphrase
 coldcard.set_passphrase(protocol::Passphrase::new("secret")?)?;
