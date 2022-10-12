@@ -150,7 +150,7 @@ impl Coldcard {
         resync(&mut cc, &mut read_buf)?;
 
         let secp = secp256k1::Secp256k1::new();
-        let mut rng = secp256k1::rand::rngs::OsRng::new()?;
+        let mut rng = secp256k1::rand::rngs::ThreadRng::default();
         let our_sk = secp256k1::SecretKey::new(&mut rng);
         let our_pk = secp256k1::PublicKey::from_secret_key(&secp, &our_sk);
 
@@ -576,9 +576,7 @@ impl std::fmt::Debug for Coldcard {
 /// Computes a shared session key using ECDH.
 fn session_key(sk: &secp256k1::SecretKey, pk: &secp256k1::PublicKey) -> Result<[u8; 32], Error> {
     let secp = secp256k1::Secp256k1::new();
-
-    let mut pt = pk.clone();
-    pt.mul_assign(&secp, &sk.secret_bytes())?;
+    let pt = pk.clone().mul_tweak(&secp, &sk.clone().into())?;
 
     let hash = util::sha256(&pt.serialize_uncompressed()[1..]);
 
