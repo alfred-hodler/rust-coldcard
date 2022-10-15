@@ -9,6 +9,11 @@ description = "Coldcard Wallet CLI Tool"
 keywords = ["coldcard", "bitcoin", "wallet"]
 categories = ["command-line-utilities", "cryptography::cryptocurrencies", "hardware-support"]
 
+[features]
+default = ["coldcard/default"]
+linux-static-hidraw = ["coldcard/linux-static-hidraw"]
+linux-static-libusb = ["coldcard/linux-static-libusb"]
+
 [[bin]]
 name = "coldcard"
 path = "src/main.rs"
