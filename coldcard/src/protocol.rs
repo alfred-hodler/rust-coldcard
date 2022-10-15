@@ -4,7 +4,6 @@ pub mod derivation_path;
 pub use derivation_path::DerivationPath;
 
 use crate::constants::*;
-use enum_as_inner::EnumAsInner;
 
 macro_rules! impl_new_with_range {
     ($thing:ident, $range:expr) => {
@@ -401,7 +400,7 @@ fn cmd(name: &str) -> Vec<u8> {
 }
 
 /// Response variants that can be read from a Coldcard.
-#[derive(Debug, EnumAsInner)]
+#[derive(Debug)]
 pub enum Response {
     Ok,
     Refused,
@@ -487,6 +486,52 @@ impl Response {
                 bytes_as_string(data).map(str::to_owned)?,
             )),
             _ => Err(DecodeError::UnknownFrame(command.to_owned())),
+        }
+    }
+
+    /// Check for an `Ok` response.
+    pub fn is_ok(&self) -> bool {
+        matches!(self, Self::Ok)
+    }
+
+    /// Extract `Int1` value.
+    pub fn into_int1(self) -> Result<u32, Self> {
+        if let Self::Int1(i) = self {
+            Ok(i)
+        } else {
+            Err(self)
+        }
+    }
+
+    /// Extract ASCII value.
+    pub fn into_ascii(self) -> Result<String, Self> {
+        if let Self::Ascii(s) = self {
+            Ok(s)
+        } else {
+            Err(self)
+        }
+    }
+
+    /// Extract binary value.
+    pub fn into_binary(self) -> Result<Vec<u8>, Self> {
+        if let Self::Binary(v) = self {
+            Ok(v)
+        } else {
+            Err(self)
+        }
+    }
+
+    /// Extract public key value.
+    pub fn into_my_pub(self) -> Result<([u8; 64], [u8; 4], Option<String>), Self> {
+        if let Self::MyPub {
+            dev_pubkey,
+            xpub_fingerprint,
+            xpub,
+        } = self
+        {
+            Ok((dev_pubkey, xpub_fingerprint, xpub))
+        } else {
+            Err(self)
         }
     }
 
