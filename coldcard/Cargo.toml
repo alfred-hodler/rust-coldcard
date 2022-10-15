@@ -9,9 +9,14 @@ description = "Coldcard Wallet Interface Library in Rust"
 keywords = ["coldcard", "bitcoin", "wallet"]
 categories = ["command-line-utilities", "cryptography::cryptocurrencies", "hardware-support"]
 
+[features]
+default = ["hidapi/default"]
+linux-static-hidraw = ["hidapi/linux-static-hidraw"]
+linux-static-libusb = ["hidapi/linux-static-libusb"]
+
 [dependencies]
 aes-ctr = "0.6.0"
 base58 = "0.2.0"
 enum-as-inner = "0.5.1"
-hidapi = { version = "1.4.2", default-features = false, features = ["linux-static-hidraw"] }
+hidapi = { version = "1.4.2", default-features = false }
 secp256k1 = { version = "0.24.0", features = ["rand-std", "bitcoin_hashes"] }
