@@ -39,6 +39,7 @@ pub mod firmware;
 pub mod protocol;
 pub mod util;
 
+use bitcoin::secp256k1;
 use hidapi::HidApi;
 use protocol::{DerivationPath, Request, Response, Username};
 
