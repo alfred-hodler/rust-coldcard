@@ -4,7 +4,6 @@ pub mod derivation_path;
 pub use derivation_path::DerivationPath;
 
 use crate::constants::*;
-use enum_as_inner::EnumAsInner;
 
 macro_rules! impl_new_with_range {
     ($thing:ident, $range:expr) => {
@@ -317,7 +316,7 @@ impl Request {
                 for XfpPath { fingerprint, path } in xfp_paths {
                     buf.push((1 + path.children().len()) as u8);
                     buf.extend(fingerprint.to_le_bytes());
-                    for child in path.children().into_iter() {
+                    for child in path.children().iter() {
                         buf.extend(child.value().to_le_bytes());
                     }
                 }
@@ -401,7 +400,7 @@ fn cmd(name: &str) -> Vec<u8> {
 }
 
 /// Response variants that can be read from a Coldcard.
-#[derive(Debug, EnumAsInner)]
+#[derive(Debug)]
 pub enum Response {
     Ok,
     Refused,
@@ -435,7 +434,7 @@ impl Response {
             b"refu" => Ok(Response::Refused),
             b"busy" => Ok(Response::Busy),
             b"biny" => Ok(Response::Binary(data.to_owned())),
-            b"int1" => decode_u32(data.get(0..4)).map(|i| Response::Int1(i)),
+            b"int1" => decode_u32(data.get(0..4)).map(Response::Int1),
             b"int2" => Ok(Response::Int2(decode_u64(data.get(0..8))?)),
             b"int3" => Ok(Response::Int3(decode_u128(data.get(0..12))?)),
             b"mypb" => {
@@ -487,6 +486,52 @@ impl Response {
                 bytes_as_string(data).map(str::to_owned)?,
             )),
             _ => Err(DecodeError::UnknownFrame(command.to_owned())),
+        }
+    }
+
+    /// Check for an `Ok` response.
+    pub fn is_ok(&self) -> bool {
+        matches!(self, Self::Ok)
+    }
+
+    /// Extract `Int1` value.
+    pub fn into_int1(self) -> Result<u32, Self> {
+        if let Self::Int1(i) = self {
+            Ok(i)
+        } else {
+            Err(self)
+        }
+    }
+
+    /// Extract ASCII value.
+    pub fn into_ascii(self) -> Result<String, Self> {
+        if let Self::Ascii(s) = self {
+            Ok(s)
+        } else {
+            Err(self)
+        }
+    }
+
+    /// Extract binary value.
+    pub fn into_binary(self) -> Result<Vec<u8>, Self> {
+        if let Self::Binary(v) = self {
+            Ok(v)
+        } else {
+            Err(self)
+        }
+    }
+
+    /// Extract public key value.
+    pub fn into_my_pub(self) -> Result<([u8; 64], [u8; 4], Option<String>), Self> {
+        if let Self::MyPub {
+            dev_pubkey,
+            xpub_fingerprint,
+            xpub,
+        } = self
+        {
+            Ok((dev_pubkey, xpub_fingerprint, xpub))
+        } else {
+            Err(self)
         }
     }
 
@@ -610,7 +655,7 @@ mod tests {
             Request::Upload {
                 offset: 5,
                 total_size: 7,
-                data: Upload::new("data 123".as_bytes().to_owned()).unwrap(),
+                data: Upload::new("data 123".as_bytes()).unwrap(),
             },
         );
 
@@ -781,16 +826,16 @@ mod tests {
     fn decode_test() {
         assert!(matches!(
             Response::decode(b"abcd"),
-            Err(DecodeError::UnknownFrame(name)) if &name == &[97, 98, 99, 100]));
+            Err(DecodeError::UnknownFrame(name)) if name == [97, 98, 99, 100]));
 
         assert!(matches!(
             Response::decode(b"fram1234"),
-            Err(DecodeError::Framing(text)) if text == "1234".to_string(),
+            Err(DecodeError::Framing(text)) if text == "1234",
         ));
 
         assert!(matches!(
             Response::decode(b"err_1234"),
-            Err(DecodeError::Protocol(text)) if text == "1234".to_string(),
+            Err(DecodeError::Protocol(text)) if text == "1234",
         ));
 
         assert!(matches!(Response::decode(b"refu"), Ok(Response::Refused)));
@@ -798,7 +843,7 @@ mod tests {
         assert!(matches!(Response::decode(b"busy"), Ok(Response::Busy)));
 
         assert!(
-            matches!(Response::decode(b"biny1234"), Ok(Response::Binary(data)) if &data == &[49, 50, 51, 52])
+            matches!(Response::decode(b"biny1234"), Ok(Response::Binary(data)) if data == [49, 50, 51, 52])
         );
 
         assert!(
@@ -833,7 +878,7 @@ mod tests {
                                 xpub_fingerprint,
                                 xpub: Some(xpub)
                             }) if &dev_pubkey == BYTES_64 && xpub_fingerprint == [64, 226, 1, 0] &&
-                                &xpub == XPUB
+                                xpub == XPUB
 
 
                 ));

@@ -35,7 +35,7 @@ impl Firmware {
             file.read_exact(&mut two_u32)?;
             let elements = decode_u32(two_u32.get(4..8))?;
 
-            for _ in 0..elements {
+            if (0..elements).next().is_some() {
                 file.read_exact(&mut two_u32)?;
                 let addr = decode_u32(two_u32.get(0..4))?;
                 let size = decode_u32(two_u32.get(4..8))?;

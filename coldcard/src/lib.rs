@@ -39,6 +39,7 @@ pub mod firmware;
 pub mod protocol;
 pub mod util;
 
+use bitcoin::secp256k1;
 use hidapi::HidApi;
 use protocol::{DerivationPath, Request, Response, Username};
 
@@ -217,7 +218,7 @@ impl Coldcard {
     pub fn check_mitm(&mut self, expected_xpub: &str) -> Result<bool, Error> {
         use secp256k1::{ecdsa::Signature, Message};
 
-        let pk = util::decode_xpub(&expected_xpub).ok_or(Error::NoSecretOnDevice)?;
+        let pk = util::decode_xpub(expected_xpub).ok_or(Error::NoSecretOnDevice)?;
         let msg = Message::from_slice(&self.session_key)?;
 
         let sig = match self.send(Request::CheckMitm)? {
@@ -251,7 +252,7 @@ impl Coldcard {
         }
 
         let uploaded_checksum = self.send(Request::Sha256)?.into_binary()?;
-        if !(&checksum == uploaded_checksum.as_slice()) {
+        if checksum != uploaded_checksum.as_slice() {
             return Err(Error::ChecksumMismatch);
         }
 
@@ -286,13 +287,13 @@ impl Coldcard {
             data.extend_from_slice(here.as_slice());
             hash_engine.update(here.as_slice());
             pos += here.len() as u32;
-            if here.len() == 0 {
+            if here.is_empty() {
                 return Err(Error::DownloadFailed);
             }
         }
 
         let actual_checksum = hash_engine.finalize();
-        if &actual_checksum == checksum {
+        if actual_checksum == checksum {
             Ok(data)
         } else {
             Err(Error::ChecksumMismatch)
@@ -350,7 +351,7 @@ impl Coldcard {
             })?
             .into_ascii()?;
 
-        Ok((!secret.is_empty()).then(|| secret))
+        Ok((!secret.is_empty()).then_some(secret))
     }
 
     /// Deletes a username, if one exists on the Coldcard. Returns `Ok(())` even
@@ -419,7 +420,7 @@ impl Coldcard {
         if let Some(policy) = policy {
             self.upload(policy)?;
             self.send(Request::HsmStart(Some(protocol::HsmStartParams {
-                file_sha: util::sha256(&policy),
+                file_sha: util::sha256(policy),
                 length: policy.len() as u32,
             })))?
             .into_ok()
@@ -485,7 +486,7 @@ impl Coldcard {
     /// Initiates PSBT signing and causes the Coldcard to prompt the user to confirm.
     /// This does not immediately return a signed tx, use `get_signed_tx` for that.
     pub fn sign_psbt(&mut self, psbt: &[u8], sign_mode: SignMode) -> Result<(), Error> {
-        let file_sha = self.upload(&psbt)?;
+        let file_sha = self.upload(psbt)?;
 
         self.send(Request::SignTransaction {
             length: psbt.len() as u32,
@@ -576,7 +577,7 @@ impl std::fmt::Debug for Coldcard {
 /// Computes a shared session key using ECDH.
 fn session_key(sk: &secp256k1::SecretKey, pk: &secp256k1::PublicKey) -> Result<[u8; 32], Error> {
     let secp = secp256k1::Secp256k1::new();
-    let pt = pk.clone().mul_tweak(&secp, &sk.clone().into())?;
+    let pt = pk.mul_tweak(&secp, &(*sk).into())?;
 
     let hash = util::sha256(&pt.serialize_uncompressed()[1..]);
 
@@ -657,7 +658,7 @@ fn recv(
         }
     }
 
-    Response::decode(&data).map_err(Error::Decoding)
+    Response::decode(data).map_err(Error::Decoding)
 }
 
 /// Resyncs a Coldcard. Can block for short periods of time.

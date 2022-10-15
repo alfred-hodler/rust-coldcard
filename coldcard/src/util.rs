@@ -1,6 +1,7 @@
 //! Miscellaneous utility functions.
-use secp256k1::hashes;
-use secp256k1::hashes::{Hash, HashEngine};
+use bitcoin::hashes;
+use bitcoin::hashes::{Hash, HashEngine};
+use bitcoin::secp256k1;
 
 /// Computes a one-off SHA256 hash.
 pub fn sha256(data: &[u8]) -> [u8; 32] {
@@ -30,8 +31,7 @@ impl Sha256Engine {
 
 /// Decodes a B58 encoded xpub and returns the inner public key.
 pub fn decode_xpub(xpub: &str) -> Option<secp256k1::PublicKey> {
-    use base58::FromBase58;
-    let decoded_xpub = xpub.from_base58().ok()?;
+    let decoded_xpub = bitcoin::util::base58::from(xpub).ok()?;
     secp256k1::PublicKey::from_slice(&decoded_xpub[45..45 + 33]).ok()
 }
 
