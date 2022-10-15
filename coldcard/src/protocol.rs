@@ -81,6 +81,7 @@ impl Secret {
 
 #[allow(non_camel_case_types)]
 #[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AddressFormat {
     P2PKH = AFC_PUBKEY,
     P2SH = AFC_SCRIPT,
