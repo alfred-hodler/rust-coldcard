@@ -766,6 +766,18 @@ pub enum Error {
     UserTimeout,
 }
 
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self)
+    }
+}
+
+impl std::error::Error for Error {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+}
+
 impl From<Response> for Error {
     fn from(error: Response) -> Self {
         Self::UnexpectedResponse(error)
