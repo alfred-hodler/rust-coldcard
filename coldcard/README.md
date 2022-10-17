@@ -8,6 +8,7 @@
 use coldcard::protocol;
 
 // detect all connected Coldcards
+// (do not forget to set the required udev rule on Linux -- see below)
 let serials = coldcard::detect()?;
 
 // open a particular one
@@ -26,6 +27,19 @@ if let Some(xpub) = xpub {
 // secure logout
 coldcard.logout()?;
 ```
+
+## Linux Specific Instructions
+
+In order to be able to detect a Coldcard device on a Linux system, [51-coinkite.rules](../51-coinkite.rules) must be placed in `/etc/udev/rules.d/`.
+
+Two mutually exclusive HID backends are supported and can be turned on using the following features:
+
+* `linux-static-hidraw` (default)
+* `linux-static-libusb` (potential issues with [unclear error messages](https://github.com/libusb/hidapi/blob/f2e2b5b4d4caa9942ad2cd594da00956b51f0ca6/libusb/hid.c#L1637))
+
+## Logging
+
+The `log` feature enables logging using the `log` crate. Disabled by default. Use judiciously as logging can leak details into the environment.
 
 ## CLI
 

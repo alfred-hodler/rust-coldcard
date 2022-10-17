@@ -13,6 +13,7 @@
 //!
 //! # fn main() -> Result<(), coldcard::Error> {
 //! // detect all connected Coldcards
+//! // (do not forget to set the required udev rule on Linux)
 //! let serials = coldcard::detect()?;
 //!
 //! //open a particular one
@@ -59,9 +60,22 @@ impl Default for Options {
 }
 
 /// Detects connected Coldcard devices and returns a vector of their serial numbers.
+///
+/// **If a Coldcard isn't being detected on Linux, check the udev instructions.**
 pub fn detect() -> Result<Vec<SerialNumber>, Error> {
     let serials: Vec<_> = hidapi::HidApi::new()?
         .device_list()
+        .map(|dev| {
+            #[cfg(feature = "log")]
+            log::trace!(
+                "Detected HID device: vid={} pid={} vendor={} sn={}",
+                dev.vendor_id(),
+                dev.product_id(),
+                dev.manufacturer_string().unwrap_or_default(),
+                dev.serial_number().unwrap_or_default()
+            );
+            dev
+        })
         .filter(|dev| dev.vendor_id() == COINKITE_VID && dev.product_id() == CKCC_PID)
         .map(|cc| SerialNumber(cc.serial_number().unwrap_or_default().to_owned()))
         .collect();
@@ -144,6 +158,9 @@ impl Coldcard {
         opts: Option<Options>,
     ) -> Result<(Self, Option<XpubInfo>), Error> {
         let mut cc = HidApi::new()?.open_serial(COINKITE_VID, CKCC_PID, sn.as_ref())?;
+
+        #[cfg(feature = "log")]
+        log::info!("opened SN {} with opts: {:?}", sn.as_ref(), opts);
 
         let mut read_buf = [0_u8; 64];
         let mut send_buf = [0_u8; 2 + constants::CHUNK_SIZE];
@@ -592,8 +609,18 @@ fn send(
     send_buf: &mut [u8; 2 + constants::CHUNK_SIZE],
 ) -> Result<(), Error> {
     let mut data = request.encode();
-
     let encrypt = cipher.is_some();
+
+    #[cfg(feature = "log")]
+    if let Ok(cmd) = std::str::from_utf8(&data[..4]) {
+        log::debug!(
+            "sending: command={}, encrypt={}, req_size={}",
+            cmd,
+            encrypt,
+            data.len()
+        );
+    }
+
     if let Some(cipher) = cipher {
         use aes_ctr::cipher::stream::SyncStreamCipher;
         cipher.apply_keystream(&mut data);
@@ -614,7 +641,12 @@ fn send(
         send_buf[1] = byte_1;
         send_buf[2..2 + chunk.len()].copy_from_slice(chunk);
 
+        #[cfg(feature = "log")]
+        log::trace!("writing packet...");
         cc.write(send_buf)?;
+
+        #[cfg(feature = "log")]
+        log::debug!("packet #{} written out", i);
     }
 
     Ok(())
@@ -628,7 +660,10 @@ fn recv(
 ) -> Result<Response, Error> {
     let mut data: Vec<u8> = Vec::new();
     let (data, is_encrypted) = loop {
+        #[cfg(feature = "log")]
+        log::trace!("reading packet...");
         let read = cc.read(read_buf)?;
+
         if read != read_buf.len() {
             return Err(Error::ReadBlockTooShort);
         }
@@ -636,6 +671,9 @@ fn recv(
         let is_last = flag & 0x80 != 0;
         let is_encrypted = flag & 0x40 != 0;
         let length = (flag & 0x3f) as usize;
+
+        #[cfg(feature = "log")]
+        log::debug!("packet read ({} bytes)", length);
 
         // this is a small optimization to avoid vector allocation
         // when a response is sufficiently small to fit the buffer
@@ -658,11 +696,32 @@ fn recv(
         }
     }
 
+    #[cfg(feature = "log")]
+    {
+        match std::str::from_utf8(&data[..4]) {
+            Ok(cmd) => {
+                log::debug!(
+                    "received: cmd={}, encrypt={}, resp_size={}",
+                    cmd,
+                    is_encrypted,
+                    data.len()
+                )
+            }
+            Err(_) => log::warn!(
+                "received: unknown frame, encrypt={}, resp_size{}",
+                is_encrypted,
+                data.len()
+            ),
+        }
+    }
+
     Response::decode(data).map_err(Error::Decoding)
 }
 
 /// Resyncs a Coldcard. Can block for short periods of time.
 fn resync(cc: &mut hidapi::HidDevice, read_buf: &mut [u8; 64]) -> Result<(), Error> {
+    #[cfg(feature = "log")]
+    log::debug!("resyncing");
     fn read_junk(
         cc: &mut hidapi::HidDevice,
         read_buf: &mut [u8; 64],

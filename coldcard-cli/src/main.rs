@@ -240,6 +240,8 @@ impl From<&SignMode> for coldcard::SignMode {
 }
 
 fn main() -> Result<(), Error> {
+    env_logger::init();
+
     let cli = Cli::parse();
 
     if cli.hidden_service.is_some() {
