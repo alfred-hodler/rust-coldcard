@@ -66,6 +66,19 @@ SUBCOMMANDS:
     xpub           Show the xpub (default: master)
 ```
 
+## Linux Specific Instructions
+
+In order to be able to detect a Coldcard device on a Linux system, [51-coinkite.rules](../51-coinkite.rules) must be placed in `/etc/udev/rules.d/`.
+
+Two mutually exclusive HID backends are supported and can be turned on using the following features:
+
+* `coldcard/linux-static-hidraw` (default)
+* `coldcard/linux-static-libusb` (potential issues with [unclear error messages](https://github.com/libusb/hidapi/blob/f2e2b5b4d4caa9942ad2cd594da00956b51f0ca6/libusb/hid.c#L1637))
+
+## Logging
+
+To see log output, run the program with the `RUST_LOG=$level` environment variable. This uses the `env_logger` crate.
+
 ## Remote mode
 
 It is possible to start the CLI in the server mode, binding it to a locally connected Coldcard. This
