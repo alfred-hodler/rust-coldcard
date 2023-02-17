@@ -81,6 +81,8 @@ To see log output, run the program with the `RUST_LOG=$level` environment variab
 
 ## Remote mode
 
+**(build using the `remote` feature to enable this functionality)**
+
 It is possible to start the CLI in the server mode, binding it to a locally connected Coldcard. This
 creates a V3 Tor hidden service and exposes it on port 8000. It then becomes possible to issue a
 limited subset of CLI commands to this service through Tor.

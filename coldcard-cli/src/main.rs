@@ -1,3 +1,4 @@
+#[cfg(feature = "remote")]
 mod remote;
 
 use std::fs::File;
@@ -23,10 +24,12 @@ struct Cli {
     serial: Option<String>,
 
     /// The .onion address representing a remote Coldcard to connect to
+    #[cfg(feature = "remote")]
     #[clap(long)]
     hidden_service: Option<String>,
 
     /// The socks5 port of the local Tor proxy when executing a remote command
+    #[cfg(feature = "remote")]
     #[clap(long, default_value = "9150")]
     socks_port: u16,
 
@@ -128,6 +131,7 @@ enum Command {
     Reboot,
 
     /// Bind the Coldcard to a V3 Tor Hidden Service for remote interaction
+    #[cfg(feature = "remote")]
     Server {
         /// The UTF-8 encoded password for accessing the service
         password: String,
@@ -244,11 +248,17 @@ fn main() -> Result<(), Error> {
 
     let cli = Cli::parse();
 
-    if cli.hidden_service.is_some() {
-        remote::handle(cli)
-    } else {
-        handle(cli)
+    #[cfg(feature = "remote")]
+    {
+        if cli.hidden_service.is_some() {
+            remote::handle(cli)
+        } else {
+            handle(cli)
+        }
     }
+
+    #[cfg(not(feature = "remote"))]
+    handle(cli)
 }
 
 fn handle(cli: Cli) -> Result<(), Error> {
@@ -486,6 +496,7 @@ fn handle(cli: Cli) -> Result<(), Error> {
             eprintln!("Rebooting...");
         }
 
+        #[cfg(feature = "remote")]
         Command::Server { password } => {
             remote::listen(cc, &password)?;
         }
@@ -678,6 +689,7 @@ enum Error {
     InvalidBase64,
     NotAuthToken,
     InvalidPSBT,
+    #[cfg(feature = "remote")]
     Remote(remote::RemoteError),
 }
 
@@ -717,6 +729,7 @@ impl From<std::io::Error> for Error {
     }
 }
 
+#[cfg(feature = "remote")]
 impl From<remote::RemoteError> for Error {
     fn from(error: remote::RemoteError) -> Self {
         Self::Remote(error)
