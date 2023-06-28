@@ -7,12 +7,14 @@
 ```rust
 use coldcard::protocol;
 
+// create an API instance
+let mut api = coldcard::Api::new()?;
+
 // detect all connected Coldcards
-// (do not forget to set the required udev rule on Linux -- see below)
-let serials = coldcard::detect()?;
+let serials = api.detect()?;
 
 // open a particular one
-let (mut coldcard, master_xpub) = serials[0].open(None)?;
+let (mut cc, master_xpub) = serials.into_iter().next().unwrap().open(&api, None)?;
 
 // set a passphrase
 coldcard.set_passphrase(protocol::Passphrase::new("secret")?)?;

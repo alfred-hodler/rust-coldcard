@@ -12,12 +12,14 @@
 //! use coldcard::protocol;
 //!
 //! # fn main() -> Result<(), coldcard::Error> {
+//! // create an API instance
+//! let mut api = coldcard::Api::new()?;
+//!
 //! // detect all connected Coldcards
-//! // (do not forget to set the required udev rule on Linux)
-//! let serials = coldcard::detect()?;
+//! let serials = api.detect()?;
 //!
 //! //open a particular one
-//! let (mut cc, master_xpub) = serials[0].open(None)?;
+//! let (mut cc, master_xpub) = serials.into_iter().next().unwrap().open(&api, None)?;
 //!
 //! // set a passphrase
 //! cc.set_passphrase(protocol::Passphrase::new("secret")?)?;
@@ -40,11 +42,55 @@ pub mod firmware;
 pub mod protocol;
 pub mod util;
 
-use hidapi::HidApi;
+use std::sync::OnceLock;
+
 use protocol::{DerivationPath, Request, Response, Username};
 
 const COINKITE_VID: u16 = 0xd13e;
 const CKCC_PID: u16 = 0xcc10;
+
+static INIT: OnceLock<()> = OnceLock::new();
+
+pub struct Api(hidapi::HidApi);
+
+impl Api {
+    /// Creates a new API for interacting with Coldcard devices.
+    ///
+    /// It is possible to have only one instance. Creating more than one will return an error.
+    pub fn new() -> Result<Self, Error> {
+        match INIT.set(()) {
+            Ok(_) => Ok(Self(hidapi::HidApi::new()?)),
+            Err(_) => Err(Error::ApiAlreadyInitialized),
+        }
+    }
+
+    /// Detects connected Coldcard devices and returns a vector of their serial numbers.
+    ///
+    /// **If a Coldcard isn't being detected on Linux, check the udev instructions.**
+    pub fn detect(&mut self) -> Result<Vec<SerialNumber>, Error> {
+        self.0.refresh_devices()?;
+
+        let serials = self
+            .0
+            .device_list()
+            .map(|dev| {
+                #[cfg(feature = "log")]
+                log::trace!(
+                    "Detected HID device: vid={} pid={} vendor={} sn={}",
+                    dev.vendor_id(),
+                    dev.product_id(),
+                    dev.manufacturer_string().unwrap_or_default(),
+                    dev.serial_number().unwrap_or_default()
+                );
+                dev
+            })
+            .filter(|dev| dev.vendor_id() == COINKITE_VID && dev.product_id() == CKCC_PID)
+            .map(|cc| SerialNumber(cc.serial_number().unwrap_or_default().to_owned()))
+            .collect();
+
+        Ok(serials)
+    }
+}
 
 /// Specifies various options that a Coldcard can be opened with.
 #[derive(Debug)]
@@ -58,38 +104,18 @@ impl Default for Options {
     }
 }
 
-/// Detects connected Coldcard devices and returns a vector of their serial numbers.
-///
-/// **If a Coldcard isn't being detected on Linux, check the udev instructions.**
-pub fn detect() -> Result<Vec<SerialNumber>, Error> {
-    let serials: Vec<_> = hidapi::HidApi::new()?
-        .device_list()
-        .map(|dev| {
-            #[cfg(feature = "log")]
-            log::trace!(
-                "Detected HID device: vid={} pid={} vendor={} sn={}",
-                dev.vendor_id(),
-                dev.product_id(),
-                dev.manufacturer_string().unwrap_or_default(),
-                dev.serial_number().unwrap_or_default()
-            );
-            dev
-        })
-        .filter(|dev| dev.vendor_id() == COINKITE_VID && dev.product_id() == CKCC_PID)
-        .map(|cc| SerialNumber(cc.serial_number().unwrap_or_default().to_owned()))
-        .collect();
-
-    Ok(serials)
-}
-
 /// Represents a particular Coldcard serial number.
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct SerialNumber(String);
 
 impl SerialNumber {
     /// Opens a Coldcard with a particular serial number and optionally some options.
-    pub fn open(&self, opts: Option<Options>) -> Result<(Coldcard, Option<XpubInfo>), Error> {
-        Coldcard::open(&self.0, opts)
+    pub fn open(
+        &self,
+        api: &Api,
+        opts: Option<Options>,
+    ) -> Result<(Coldcard, Option<XpubInfo>), Error> {
+        Coldcard::open(api, &self.0, opts)
     }
 
     /// The string value of this serial number.
@@ -153,10 +179,11 @@ impl Coldcard {
     /// Coldcard devices. Also returns an optional `XpubInfo` in case the device is
     /// already initialized with a secret.
     pub fn open(
+        api: &Api,
         sn: impl AsRef<str>,
         opts: Option<Options>,
     ) -> Result<(Self, Option<XpubInfo>), Error> {
-        let mut cc = HidApi::new()?.open_serial(COINKITE_VID, CKCC_PID, sn.as_ref())?;
+        let mut cc = api.0.open_serial(COINKITE_VID, CKCC_PID, sn.as_ref())?;
 
         #[cfg(feature = "log")]
         log::info!("opened SN {} with opts: {:?}", sn.as_ref(), opts);
@@ -166,26 +193,28 @@ impl Coldcard {
 
         resync(&mut cc, &mut read_buf)?;
 
-        let secp = secp256k1::Secp256k1::new();
-        let mut rng = secp256k1::rand::rngs::ThreadRng::default();
-        let our_sk = secp256k1::SecretKey::new(&mut rng);
-        let our_pk = secp256k1::PublicKey::from_secret_key(&secp, &our_sk);
+        let mut rng = rand::rngs::ThreadRng::default();
+        let our_sk = k256::SecretKey::random(&mut rng);
+        let our_pk = our_sk.public_key();
 
+        use k256::elliptic_curve::sec1::ToEncodedPoint;
         let encrypt_start = Request::EncryptStart {
-            device_pubkey: our_pk.serialize_uncompressed()[1..].try_into().unwrap(),
+            device_pubkey: our_pk.to_encoded_point(false).as_bytes()[1..]
+                .try_into()
+                .map_err(|_| k256::elliptic_curve::Error)?,
             version: opts.map(|o| o.encrypt_version),
         };
 
         send(encrypt_start, &mut cc, None, &mut send_buf)?;
         let (cc_pk, xpub_fingerprint, xpub) = recv(&mut cc, None, &mut read_buf)?.into_my_pub()?;
 
-        // this is because the Coldcard returns a 64 byte pk (no 0x04 prefix)
+        // this is because the Coldcard returns a 64 byte pk (no sec1 0x04 prefix)
         let mut prefixed_cc_pk = Vec::with_capacity(65);
         prefixed_cc_pk.push(0x04);
         prefixed_cc_pk.extend_from_slice(&cc_pk);
 
-        let cc_pk = secp256k1::PublicKey::from_slice(&prefixed_cc_pk)?;
-        let session_key = session_key(&our_sk, &cc_pk)?;
+        let cc_pk = k256::PublicKey::from_sec1_bytes(&prefixed_cc_pk)?;
+        let session_key = session_key(our_sk, cc_pk)?;
 
         let (encrypt, decrypt) = {
             use aes_ctr::cipher::{generic_array::GenericArray, stream::NewStreamCipher};
@@ -232,17 +261,23 @@ impl Coldcard {
     /// Checks if the communication line is undergoing a MITM attack.
     /// Returns `Ok(true)` if MITM is in progress or `Ok(false)` if not.
     pub fn check_mitm(&mut self, expected_xpub: &str) -> Result<bool, Error> {
-        use secp256k1::{ecdsa::Signature, Message};
+        use k256::ecdsa::signature::hazmat::PrehashVerifier;
+        use k256::ecdsa::Signature;
 
         let pk = util::decode_xpub(expected_xpub).ok_or(Error::NoSecretOnDevice)?;
-        let msg = Message::from_slice(&self.session_key)?;
+        let verifying_key = k256::ecdsa::VerifyingKey::from(pk);
 
-        let sig = match self.send(Request::CheckMitm)? {
-            Response::Binary(sig) if sig.len() == 65 => Ok(Signature::from_compact(&sig[1..])?),
+        let (r, s): ([u8; 32], [u8; 32]) = match self.send(Request::CheckMitm)? {
+            Response::Binary(sig) if sig.len() == 65 => {
+                let (r, s) = sig[1..].split_at(32);
+                Ok((r.try_into().unwrap(), s.try_into().unwrap()))
+            }
             _ => Err(Error::NoSecretOnDevice),
         }?;
 
-        let verified = secp256k1::Secp256k1::verification_only().verify_ecdsa(&msg, &sig, &pk);
+        let sig = Signature::from_scalars(r, s).map_err(|_| k256::elliptic_curve::Error)?;
+
+        let verified = verifying_key.verify_prehash(&self.session_key, &sig);
 
         Ok(verified.is_err())
     }
@@ -263,7 +298,7 @@ impl Coldcard {
                 .into_int1()?;
 
             if pos != blk_offset {
-                return Err(Error::UploadFailed);
+                return Err(Error::TransmissionFailed);
             }
         }
 
@@ -304,7 +339,7 @@ impl Coldcard {
             hash_engine.update(here.as_slice());
             pos += here.len() as u32;
             if here.is_empty() {
-                return Err(Error::DownloadFailed);
+                return Err(Error::TransmissionFailed);
             }
         }
 
@@ -412,7 +447,7 @@ impl Coldcard {
             Response::MessageSigned { address, signature } => {
                 Ok(Some(SignedMessage { address, signature }))
             }
-            response => Err(Error::UnexpectedResponse(response)),
+            response => Err(response.into()),
         }
     }
 
@@ -529,8 +564,8 @@ impl Coldcard {
             .chain(constants::MAX_MSG_LEN - 10..constants::MAX_MSG_LEN - 4)
             .collect();
 
-        use secp256k1::rand::RngCore;
-        let mut rng = secp256k1::rand::thread_rng();
+        use rand::RngCore;
+        let mut rng = rand::thread_rng();
 
         for len in lengths {
             let mut ping = Vec::new();
@@ -591,13 +626,14 @@ impl std::fmt::Debug for Coldcard {
 }
 
 /// Computes a shared session key using ECDH.
-fn session_key(sk: &secp256k1::SecretKey, pk: &secp256k1::PublicKey) -> Result<[u8; 32], Error> {
-    let secp = secp256k1::Secp256k1::new();
-    let pt = pk.mul_tweak(&secp, &(*sk).into())?;
+fn session_key(sk: k256::SecretKey, pk: k256::PublicKey) -> Result<[u8; 32], Error> {
+    use k256::elliptic_curve::sec1::ToEncodedPoint;
 
-    let hash = util::sha256(&pt.serialize_uncompressed()[1..]);
+    let tweaked_pk = *pk.as_affine() * *sk.to_nonzero_scalar();
+    let tweaked_pk = k256::PublicKey::from_affine(tweaked_pk.to_affine())?;
+    let pt = tweaked_pk.to_encoded_point(false);
 
-    Ok(hash)
+    Ok(util::sha256(&pt.as_bytes()[1..]))
 }
 
 /// Sends a request to a Coldcard.
@@ -664,7 +700,7 @@ fn recv(
         let read = cc.read(read_buf)?;
 
         if read != read_buf.len() {
-            return Err(Error::ReadBlockTooShort);
+            return Err(Error::TransmissionFailed);
         }
         let flag = read_buf[0];
         let is_last = flag & 0x80 != 0;
@@ -691,7 +727,7 @@ fn recv(
             use aes_ctr::cipher::stream::SyncStreamCipher;
             cipher.apply_keystream(data);
         } else {
-            return Err(CryptoError::NotSetUp.into());
+            return Err(Error::EncryptionNotSetUp);
         }
     }
 
@@ -749,20 +785,18 @@ fn resync(cc: &mut hidapi::HidDevice, read_buf: &mut [u8; 64]) -> Result<(), Err
 /// Any type of error that can occur while a Coldcard is being used.
 #[derive(Debug)]
 pub enum Error {
-    ReadBlockTooShort,
+    ApiAlreadyInitialized,
     UnexpectedResponse(Response),
     Encoding(protocol::EncodeError),
     Decoding(protocol::DecodeError),
     DerivationPath(protocol::derivation_path::Error),
     Hid(hidapi::HidError),
-    Encryption(CryptoError),
+    EncryptionNotSetUp,
+    Secp256k1,
     NoSecretOnDevice,
     ChecksumMismatch,
-    UploadFailed,
-    DownloadFailed,
-    NoColdcard,
+    TransmissionFailed,
     TestFailureWithLength(usize),
-    UserTimeout,
 }
 
 impl std::fmt::Display for Error {
@@ -801,29 +835,9 @@ impl From<hidapi::HidError> for Error {
     }
 }
 
-impl From<CryptoError> for Error {
-    fn from(error: CryptoError) -> Self {
-        Self::Encryption(error)
-    }
-}
-
-/// Errors related to cryptographic operations.
-#[derive(Debug)]
-pub enum CryptoError {
-    Rng(secp256k1::rand::Error),
-    Secp256k1(secp256k1::Error),
-    NotSetUp,
-}
-
-impl From<secp256k1::rand::Error> for Error {
-    fn from(error: secp256k1::rand::Error) -> Self {
-        CryptoError::Rng(error).into()
-    }
-}
-
-impl From<secp256k1::Error> for Error {
-    fn from(error: secp256k1::Error) -> Self {
-        CryptoError::Secp256k1(error).into()
+impl From<k256::elliptic_curve::Error> for Error {
+    fn from(_: k256::elliptic_curve::Error) -> Self {
+        Error::Secp256k1
     }
 }
 
@@ -834,24 +848,23 @@ mod tests {
     #[test]
     fn session_key_test() {
         // Test vectors generated using Python's ECDSA library.
-        let secp = secp256k1::Secp256k1::new();
 
-        let sk = secp256k1::SecretKey::from_slice(&[
+        let sk = k256::SecretKey::from_slice(&[
             54, 87, 69, 21, 237, 128, 12, 240, 76, 202, 164, 71, 187, 45, 83, 164, 166, 220, 223,
             141, 45, 194, 122, 194, 238, 254, 252, 128, 11, 241, 248, 173,
         ])
         .unwrap();
 
-        let pk = secp256k1::PublicKey::from_secret_key(&secp, &sk);
+        let pk = sk.public_key();
 
-        let key = session_key(&sk, &pk);
+        let key = session_key(sk, pk).unwrap();
 
         assert!(matches!(
             key,
-            Ok([
+            [
                 97, 10, 203, 217, 188, 148, 215, 133, 15, 230, 124, 53, 141, 69, 124, 66, 67, 92,
                 157, 16, 21, 21, 229, 234, 131, 191, 156, 46, 47, 231, 92, 40
-            ])
+            ]
         ));
     }
 }
