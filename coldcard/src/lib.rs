@@ -18,8 +18,9 @@
 //! // detect all connected Coldcards
 //! let serials = api.detect()?;
 //!
-//! //open a particular one
-//! let (mut cc, master_xpub) = serials.into_iter().next().unwrap().open(&api, None)?;
+//! // get the first serial and open it
+//! let first = serials.into_iter().next().unwrap();
+//! let (mut cc, master_xpub) = api.open(first, None).unwrap();
 //!
 //! // set a passphrase
 //! cc.set_passphrase(protocol::Passphrase::new("secret")?)?;
@@ -51,6 +52,7 @@ const CKCC_PID: u16 = 0xcc10;
 
 static INIT: OnceLock<()> = OnceLock::new();
 
+/// API for interacting with Coldcard devices. Only one instance can exist per program lifetime.
 pub struct Api(hidapi::HidApi);
 
 impl Api {
@@ -90,39 +92,39 @@ impl Api {
 
         Ok(serials)
     }
+
+    /// Opens a Coldcard with a particular serial number and optionally some options.
+    /// If no serial number is known, use the `Api::detect()` method to detect connected
+    /// Coldcard devices. Returns an optional `XpubInfo` in case the device is
+    /// already initialized with a secret.
+    pub fn open(
+        &self,
+        sn: impl AsRef<str>,
+        opts: Option<Options>,
+    ) -> Result<(Coldcard, Option<XpubInfo>), Error> {
+        Coldcard::open(self, sn, opts)
+    }
 }
 
 /// Specifies various options that a Coldcard can be opened with.
 #[derive(Debug)]
 pub struct Options {
     pub encrypt_version: u32,
+    pub resync_on_open: bool,
 }
 
 impl Default for Options {
     fn default() -> Self {
-        Self { encrypt_version: 1 }
+        Self {
+            encrypt_version: 1,
+            resync_on_open: false,
+        }
     }
 }
 
 /// Represents a particular Coldcard serial number.
-#[derive(Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct SerialNumber(String);
-
-impl SerialNumber {
-    /// Opens a Coldcard with a particular serial number and optionally some options.
-    pub fn open(
-        &self,
-        api: &Api,
-        opts: Option<Options>,
-    ) -> Result<(Coldcard, Option<XpubInfo>), Error> {
-        Coldcard::open(api, &self.0, opts)
-    }
-
-    /// The string value of this serial number.
-    pub fn value(&self) -> &str {
-        self.as_ref()
-    }
-}
 
 impl AsRef<str> for SerialNumber {
     fn as_ref(&self) -> &str {
@@ -175,10 +177,10 @@ pub struct Coldcard {
 
 impl Coldcard {
     /// Opens a Coldcard with a particular serial number and optionally some options.
-    /// If no serial number is known, use the `SerialNumber` type to detect connected
-    /// Coldcard devices. Also returns an optional `XpubInfo` in case the device is
+    /// If no serial number is known, use the `Api::detect()` method to detect connected
+    /// Coldcard devices. Returns an optional `XpubInfo` in case the device is
     /// already initialized with a secret.
-    pub fn open(
+    fn open(
         api: &Api,
         sn: impl AsRef<str>,
         opts: Option<Options>,
@@ -187,11 +189,14 @@ impl Coldcard {
 
         #[cfg(feature = "log")]
         log::info!("opened SN {} with opts: {:?}", sn.as_ref(), opts);
+        let opts = opts.unwrap_or_default();
 
         let mut read_buf = [0_u8; 64];
         let mut send_buf = [0_u8; 2 + constants::CHUNK_SIZE];
 
-        resync(&mut cc, &mut read_buf)?;
+        if opts.resync_on_open {
+            resync(&mut cc, &mut read_buf)?;
+        }
 
         let mut rng = rand::rngs::ThreadRng::default();
         let our_sk = k256::SecretKey::random(&mut rng);
@@ -202,7 +207,7 @@ impl Coldcard {
             device_pubkey: our_pk.to_encoded_point(false).as_bytes()[1..]
                 .try_into()
                 .map_err(|_| k256::elliptic_curve::Error)?,
-            version: opts.map(|o| o.encrypt_version),
+            version: Some(opts.encrypt_version),
         };
 
         send(encrypt_start, &mut cc, None, &mut send_buf)?;

@@ -13,8 +13,9 @@ let mut api = coldcard::Api::new()?;
 // detect all connected Coldcards
 let serials = api.detect()?;
 
-// open a particular one
-let (mut cc, master_xpub) = serials.into_iter().next().unwrap().open(&api, None)?;
+// get the first serial and open it
+let first = serials.into_iter().next().unwrap();
+let (mut cc, master_xpub) = api.open(first, None).unwrap();
 
 // set a passphrase
 coldcard.set_passphrase(protocol::Passphrase::new("secret")?)?;

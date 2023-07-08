@@ -237,7 +237,7 @@ fn handle(cli: Cli) -> Result<(), Error> {
 
     if let Command::List = cli.command {
         for cc in serials {
-            println!("{}", cc.value());
+            println!("{}", cc.as_ref());
         }
         return Ok(());
     }
@@ -248,7 +248,7 @@ fn handle(cli: Cli) -> Result<(), Error> {
     }
     .ok_or(Error::NoColdcardDetected)?;
 
-    let (mut cc, xpub_info) = sn.open(&api, None)?;
+    let (mut cc, xpub_info) = api.open(sn, None)?;
 
     // check for MITM if requested
     let expected_xpub = cli.xpub;
