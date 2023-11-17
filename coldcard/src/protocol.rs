@@ -137,6 +137,10 @@ pub enum Request {
     GetSignedMessage,
     GetBackupFile,
     GetSignedTransaction,
+    MiniscriptEnroll {
+        length: u32,
+        file_sha: [u8; 32],
+    },
     MultisigEnroll {
         length: u32,
         file_sha: [u8; 32],
@@ -272,6 +276,13 @@ impl Request {
             Request::GetBackupFile => cmd("bkok"),
 
             Request::GetSignedTransaction => cmd("stok"),
+
+            Request::MiniscriptEnroll { length, file_sha } => {
+                let mut buf = cmd("mins");
+                buf.extend(length.to_le_bytes());
+                buf.extend(file_sha);
+                buf
+            }
 
             Request::MultisigEnroll { length, file_sha } => {
                 let mut buf = cmd("enrl");

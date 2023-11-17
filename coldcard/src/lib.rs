@@ -47,8 +47,8 @@ use std::sync::OnceLock;
 
 use protocol::{DerivationPath, Request, Response, Username};
 
-const COINKITE_VID: u16 = 0xd13e;
-const CKCC_PID: u16 = 0xcc10;
+pub const COINKITE_VID: u16 = 0xd13e;
+pub const CKCC_PID: u16 = 0xcc10;
 
 static INIT: OnceLock<()> = OnceLock::new();
 
@@ -103,6 +103,12 @@ impl Api {
         opts: Option<Options>,
     ) -> Result<(Coldcard, Option<XpubInfo>), Error> {
         Coldcard::open(self, sn, opts)
+    }
+}
+
+impl AsRef<hidapi::HidApi> for Api {
+    fn as_ref(&self) -> &hidapi::HidApi {
+        &self.0
     }
 }
 
@@ -180,12 +186,14 @@ impl Coldcard {
     /// If no serial number is known, use the `Api::detect()` method to detect connected
     /// Coldcard devices. Returns an optional `XpubInfo` in case the device is
     /// already initialized with a secret.
-    fn open(
-        api: &Api,
+    pub fn open(
+        api: impl AsRef<hidapi::HidApi>,
         sn: impl AsRef<str>,
         opts: Option<Options>,
     ) -> Result<(Self, Option<XpubInfo>), Error> {
-        let mut cc = api.0.open_serial(COINKITE_VID, CKCC_PID, sn.as_ref())?;
+        let mut cc = api
+            .as_ref()
+            .open_serial(COINKITE_VID, CKCC_PID, sn.as_ref())?;
 
         #[cfg(feature = "log")]
         log::info!("opened SN {} with opts: {:?}", sn.as_ref(), opts);
@@ -503,6 +511,18 @@ impl Coldcard {
     /// Securely logs out of the Coldcard. Requires a power cycle to use again.
     pub fn logout(mut self) -> Result<(), Error> {
         self.send(Request::Logout)?.into_ok().map_err(Error::from)
+    }
+
+    /// Enroll miniscript file.
+    pub fn miniscript_enroll(&mut self, descriptor: &[u8]) -> Result<(), Error> {
+        let file_sha = self.upload(descriptor)?;
+
+        self.send(Request::MiniscriptEnroll {
+            length: descriptor.len() as u32,
+            file_sha,
+        })?
+        .into_ok()
+        .map_err(Error::from)
     }
 
     /// Reboots the Coldcard.
