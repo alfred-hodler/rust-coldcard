@@ -45,7 +45,7 @@ pub mod util;
 
 use std::sync::OnceLock;
 
-use protocol::{DerivationPath, Request, Response, Username};
+use protocol::{DerivationPath, DescriptorName, Request, Response, Username};
 
 pub const COINKITE_VID: u16 = 0xd13e;
 pub const CKCC_PID: u16 = 0xcc10;
@@ -165,6 +165,7 @@ pub struct Backup {
 pub enum SignMode {
     Visualize = constants::STXN_VISUALIZE,
     VisualizeSigned = constants::STXN_VISUALIZE | constants::STXN_SIGNED,
+    Signed = constants::STXN_SIGNED,
     Finalize = constants::STXN_FINALIZE,
 }
 
@@ -513,6 +514,22 @@ impl Coldcard {
         self.send(Request::Logout)?.into_ok().map_err(Error::from)
     }
 
+    /// Show miniscript address.
+    pub fn miniscript_address(
+        &mut self,
+        descriptor_name: DescriptorName,
+        change: bool,
+        index: u32,
+    ) -> Result<String, Error> {
+        self.send(Request::MiniscriptAddress {
+            descriptor_name,
+            change,
+            index,
+        })?
+        .into_ascii()
+        .map_err(Error::from)
+    }
+
     /// Enroll miniscript file.
     pub fn miniscript_enroll(&mut self, descriptor: &[u8]) -> Result<(), Error> {
         let file_sha = self.upload(descriptor)?;
@@ -523,6 +540,27 @@ impl Coldcard {
         })?
         .into_ok()
         .map_err(Error::from)
+    }
+
+    /// Get registered descriptor by name.
+    pub fn miniscript_get(
+        &mut self,
+        descriptor_name: DescriptorName,
+    ) -> Result<Option<String>, Error> {
+        let response = match self.send(Request::MiniscriptGetDescriptor { descriptor_name }) {
+            Ok(response) => response,
+            Err(Error::Decoding(protocol::DecodeError::Protocol(e))) => {
+                if e == "Miniscript wallet not found" {
+                    return Ok(None);
+                } else {
+                    return Err(Error::Decoding(protocol::DecodeError::Protocol(e)));
+                }
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        };
+        response.into_ascii().map(|r| Some(r)).map_err(Error::from)
     }
 
     /// Reboots the Coldcard.
