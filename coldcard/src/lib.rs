@@ -165,6 +165,7 @@ pub struct Backup {
 pub enum SignMode {
     Visualize = constants::STXN_VISUALIZE,
     VisualizeSigned = constants::STXN_VISUALIZE | constants::STXN_SIGNED,
+    Signed = constants::STXN_SIGNED,
     Finalize = constants::STXN_FINALIZE,
 }
 
