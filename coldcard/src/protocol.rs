@@ -29,6 +29,7 @@ macro_rules! impl_new_with_range {
     };
 }
 
+pub struct DescriptorName(Vec<u8>);
 pub struct Upload(Vec<u8>);
 pub struct Message(Vec<u8>);
 pub struct Username(Vec<u8>);
@@ -62,6 +63,7 @@ impl Default for FileNo {
     }
 }
 
+impl_new_with_range!(DescriptorName, 2..40);
 impl_new_with_range!(Upload, 1..MAX_BLK_LEN);
 impl_new_with_range!(Message, 1..240);
 impl_new_with_range!(Username, 1..16);
@@ -137,9 +139,17 @@ pub enum Request {
     GetSignedMessage,
     GetBackupFile,
     GetSignedTransaction,
+    MiniscriptAddress {
+        descriptor_name: DescriptorName,
+        change: bool,
+        index: u32,
+    },
     MiniscriptEnroll {
         length: u32,
         file_sha: [u8; 32],
+    },
+    MiniscriptGetDescriptor {
+        descriptor_name: DescriptorName,
     },
     MultisigEnroll {
         length: u32,
@@ -277,10 +287,28 @@ impl Request {
 
             Request::GetSignedTransaction => cmd("stok"),
 
+            Request::MiniscriptAddress {
+                descriptor_name,
+                change,
+                index,
+            } => {
+                let mut buf = cmd("msas");
+                buf.extend((change as u32).to_le_bytes());
+                buf.extend(index.to_le_bytes());
+                buf.extend(descriptor_name.0);
+                buf
+            }
+
             Request::MiniscriptEnroll { length, file_sha } => {
                 let mut buf = cmd("mins");
                 buf.extend(length.to_le_bytes());
                 buf.extend(file_sha);
+                buf
+            }
+
+            Request::MiniscriptGetDescriptor { descriptor_name } => {
+                let mut buf = cmd("msgt");
+                buf.extend(descriptor_name.0);
                 buf
             }
 
