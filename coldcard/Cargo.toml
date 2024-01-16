@@ -10,9 +10,10 @@ keywords = ["coldcard", "bitcoin", "wallet"]
 categories = ["command-line-utilities", "cryptography::cryptocurrencies", "hardware-support"]
 
 [features]
-default = ["linux-static-hidraw"]
+default = ["linux-static-hidraw", "api"]
 linux-static-hidraw = ["hidapi/linux-static-hidraw"]
 linux-static-libusb = ["hidapi/linux-static-libusb"]
+api = []
 
 [dependencies]
 aes-ctr = "0.6.0"

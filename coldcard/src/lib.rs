@@ -43,6 +43,7 @@ pub mod firmware;
 pub mod protocol;
 pub mod util;
 
+#[cfg(feature = "api")]
 use std::sync::OnceLock;
 
 use protocol::{DerivationPath, DescriptorName, Request, Response, Username};
@@ -50,11 +51,14 @@ use protocol::{DerivationPath, DescriptorName, Request, Response, Username};
 pub const COINKITE_VID: u16 = 0xd13e;
 pub const CKCC_PID: u16 = 0xcc10;
 
+#[cfg(feature = "api")]
 static INIT: OnceLock<()> = OnceLock::new();
 
 /// API for interacting with Coldcard devices. Only one instance can exist per program lifetime.
+#[cfg(feature = "api")]
 pub struct Api(hidapi::HidApi);
 
+#[cfg(feature = "api")]
 impl Api {
     /// Creates a new API for interacting with Coldcard devices.
     ///
@@ -106,6 +110,7 @@ impl Api {
     }
 }
 
+#[cfg(feature = "api")]
 impl AsRef<hidapi::HidApi> for Api {
     fn as_ref(&self) -> &hidapi::HidApi {
         &self.0
