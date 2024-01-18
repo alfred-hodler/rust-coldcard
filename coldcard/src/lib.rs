@@ -43,27 +43,45 @@ pub mod firmware;
 pub mod protocol;
 pub mod util;
 
-use std::sync::OnceLock;
+use std::sync::Once;
 
 use protocol::{DerivationPath, DescriptorName, Request, Response, Username};
 
 pub const COINKITE_VID: u16 = 0xd13e;
 pub const CKCC_PID: u16 = 0xcc10;
 
-static INIT: OnceLock<()> = OnceLock::new();
+static IS_INIT: Once = Once::new();
 
-/// API for interacting with Coldcard devices. Only one instance can exist per program lifetime.
-pub struct Api(hidapi::HidApi);
+static mut HIDAPI: Result<hidapi::HidApi, hidapi::HidError> =
+    Err(hidapi::HidError::InitializationError);
 
-impl Api {
-    /// Creates a new API for interacting with Coldcard devices.
+/// API for interacting with Coldcard devices.
+pub struct Api<'a>(&'a mut hidapi::HidApi);
+
+impl<'a> Api<'a> {
+    /// Creates a new API.
     ///
-    /// It is possible to have only one instance. Creating more than one will return an error.
+    /// The inner `HidApi` instance is borrowed from a variable with a static lifetime. It is safe
+    /// to call this multiple times.
     pub fn new() -> Result<Self, Error> {
-        match INIT.set(()) {
-            Ok(_) => Ok(Self(hidapi::HidApi::new()?)),
-            Err(_) => Err(Error::ApiAlreadyInitialized),
+        unsafe {
+            IS_INIT.call_once(|| {
+                HIDAPI = hidapi::HidApi::new().map_err(From::from);
+            });
+
+            match HIDAPI.as_mut() {
+                Ok(api) => Ok(Self(api)),
+                Err(err) => Err(Error::ApiInitialization(err)),
+            }
         }
+    }
+
+    /// Creates a new API from a borrowed `HidApi` instance.
+    ///
+    /// This is useful in scenarios where an external `HidApi` already exists and the caller
+    /// wishes to reuse it.
+    pub fn from_borrowed(api: &'a mut hidapi::HidApi) -> Self {
+        Self(api)
     }
 
     /// Detects connected Coldcard devices and returns a vector of their serial numbers.
@@ -106,7 +124,7 @@ impl Api {
     }
 }
 
-impl AsRef<hidapi::HidApi> for Api {
+impl AsRef<hidapi::HidApi> for Api<'_> {
     fn as_ref(&self) -> &hidapi::HidApi {
         &self.0
     }
@@ -848,7 +866,7 @@ fn resync(cc: &mut hidapi::HidDevice, read_buf: &mut [u8; 64]) -> Result<(), Err
 /// Any type of error that can occur while a Coldcard is being used.
 #[derive(Debug)]
 pub enum Error {
-    ApiAlreadyInitialized,
+    ApiInitialization(&'static hidapi::HidError),
     UnexpectedResponse(Response),
     Encoding(protocol::EncodeError),
     Decoding(protocol::DecodeError),
