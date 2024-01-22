@@ -19,8 +19,7 @@
 //! let serials = api.detect()?;
 //!
 //! // get the first serial and open it
-//! let first = serials.into_iter().next().unwrap();
-//! let (mut cc, master_xpub) = api.open(first, None).unwrap();
+//! let (mut cc, master_xpub) = api.open(&serials[0], None)?;
 //!
 //! // set a passphrase
 //! cc.set_passphrase(protocol::Passphrase::new("secret")?)?;
@@ -43,37 +42,22 @@ pub mod firmware;
 pub mod protocol;
 pub mod util;
 
-use std::sync::Once;
-
 use protocol::{DerivationPath, DescriptorName, Request, Response, Username};
+use util::MaybeOwned;
 
 pub const COINKITE_VID: u16 = 0xd13e;
 pub const CKCC_PID: u16 = 0xcc10;
 
-static IS_INIT: Once = Once::new();
-
-static mut HIDAPI: Result<hidapi::HidApi, hidapi::HidError> =
-    Err(hidapi::HidError::InitializationError);
-
 /// API for interacting with Coldcard devices.
-pub struct Api<'a>(&'a mut hidapi::HidApi);
+pub struct Api<'a>(MaybeOwned<'a, hidapi::HidApi>);
 
 impl<'a> Api<'a> {
     /// Creates a new API.
     ///
-    /// The inner `HidApi` instance is borrowed from a variable with a static lifetime. It is safe
-    /// to call this multiple times.
+    /// It is safe to call this multiple times since each call will create a new backend with its
+    /// own device list (using the same hidapi backend).
     pub fn new() -> Result<Self, Error> {
-        unsafe {
-            IS_INIT.call_once(|| {
-                HIDAPI = hidapi::HidApi::new().map_err(From::from);
-            });
-
-            match HIDAPI.as_mut() {
-                Ok(api) => Ok(Self(api)),
-                Err(err) => Err(Error::ApiInitialization(err)),
-            }
-        }
+        Ok(Self(MaybeOwned::Owned(hidapi::HidApi::new()?)))
     }
 
     /// Creates a new API from a borrowed `HidApi` instance.
@@ -81,19 +65,20 @@ impl<'a> Api<'a> {
     /// This is useful in scenarios where an external `HidApi` already exists and the caller
     /// wishes to reuse it.
     pub fn from_borrowed(api: &'a mut hidapi::HidApi) -> Self {
-        Self(api)
+        Self(MaybeOwned::Borrowed(api))
     }
 
     /// Detects connected Coldcard devices and returns a vector of their serial numbers.
     ///
     /// **If a Coldcard isn't being detected on Linux, check the udev instructions.**
     pub fn detect(&mut self) -> Result<Vec<SerialNumber>, Error> {
-        self.0.refresh_devices()?;
+        self.0.as_mut().refresh_devices()?;
 
         let serials = self
             .0
+            .as_ref()
             .device_list()
-            .map(|dev| {
+            .filter(|dev| {
                 #[cfg(feature = "log")]
                 log::trace!(
                     "Detected HID device: vid={} pid={} vendor={} sn={}",
@@ -102,9 +87,9 @@ impl<'a> Api<'a> {
                     dev.manufacturer_string().unwrap_or_default(),
                     dev.serial_number().unwrap_or_default()
                 );
-                dev
+
+                dev.vendor_id() == COINKITE_VID && dev.product_id() == CKCC_PID
             })
-            .filter(|dev| dev.vendor_id() == COINKITE_VID && dev.product_id() == CKCC_PID)
             .map(|cc| SerialNumber(cc.serial_number().unwrap_or_default().to_owned()))
             .collect();
 
@@ -122,11 +107,24 @@ impl<'a> Api<'a> {
     ) -> Result<(Coldcard, Option<XpubInfo>), Error> {
         Coldcard::open(self, sn, opts)
     }
+
+    /// Checks whether a Coldcard with a particular serial number is present.
+    ///
+    /// This is useful when the wanted serial is already known.
+    pub fn is_present(&mut self, sn: impl AsRef<str>) -> Result<bool, Error> {
+        self.0.as_mut().refresh_devices()?;
+
+        Ok(self.0.as_ref().device_list().any(|dev| {
+            dev.serial_number() == Some(sn.as_ref())
+                && dev.vendor_id() == COINKITE_VID
+                && dev.product_id() == CKCC_PID
+        }))
+    }
 }
 
 impl AsRef<hidapi::HidApi> for Api<'_> {
     fn as_ref(&self) -> &hidapi::HidApi {
-        &self.0
+        self.0.as_ref()
     }
 }
 
@@ -241,9 +239,9 @@ impl Coldcard {
         let (cc_pk, xpub_fingerprint, xpub) = recv(&mut cc, None, &mut read_buf)?.into_my_pub()?;
 
         // this is because the Coldcard returns a 64 byte pk (no sec1 0x04 prefix)
-        let mut prefixed_cc_pk = Vec::with_capacity(65);
-        prefixed_cc_pk.push(0x04);
-        prefixed_cc_pk.extend_from_slice(&cc_pk);
+        let mut prefixed_cc_pk = [0_u8; 65];
+        prefixed_cc_pk[0] = 0x04;
+        prefixed_cc_pk[1..].copy_from_slice(&cc_pk);
 
         let cc_pk = k256::PublicKey::from_sec1_bytes(&prefixed_cc_pk)?;
         let session_key = session_key(our_sk, cc_pk)?;
@@ -361,7 +359,7 @@ impl Coldcard {
             let blk_len = constants::MAX_BLK_LEN.min((length - pos) as usize) as u32;
             let here = self
                 .send(Request::Download {
-                    offset: pos as u32,
+                    offset: pos,
                     length: blk_len,
                     file_number,
                 })?
@@ -578,7 +576,7 @@ impl Coldcard {
                 return Err(e);
             }
         };
-        response.into_ascii().map(|r| Some(r)).map_err(Error::from)
+        response.into_ascii().map(Some).map_err(Error::from)
     }
 
     /// Reboots the Coldcard.
@@ -640,7 +638,6 @@ impl Coldcard {
     /// Tests the Coldcard and the USB connection by sending predefined data packets.
     pub fn test(&mut self) -> Result<(), Error> {
         let lengths: Vec<usize> = (55..66)
-            .into_iter()
             .chain(1013..1024)
             .chain(constants::MAX_MSG_LEN - 10..constants::MAX_MSG_LEN - 4)
             .collect();
@@ -866,7 +863,6 @@ fn resync(cc: &mut hidapi::HidDevice, read_buf: &mut [u8; 64]) -> Result<(), Err
 /// Any type of error that can occur while a Coldcard is being used.
 #[derive(Debug)]
 pub enum Error {
-    ApiInitialization(&'static hidapi::HidError),
     UnexpectedResponse(Response),
     Encoding(protocol::EncodeError),
     Decoding(protocol::DecodeError),

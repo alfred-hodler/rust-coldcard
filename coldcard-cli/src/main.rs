@@ -187,6 +187,7 @@ impl From<AddressFormat> for protocol::AddressFormat {
 }
 
 #[derive(clap::ArgEnum, Clone)]
+#[allow(clippy::upper_case_acronyms)]
 enum AuthMode {
     TOTP,
     HOTP,
@@ -396,7 +397,7 @@ fn handle(cli: Cli) -> Result<(), Error> {
             let raw_msg = protocol::Message::new(&message)?;
             let path = path
                 .as_ref()
-                .map(|p| protocol::DerivationPath::new(&p))
+                .map(|p| protocol::DerivationPath::new(p))
                 .transpose()?;
 
             print_waiting();
@@ -439,7 +440,7 @@ fn handle(cli: Cli) -> Result<(), Error> {
             };
 
             print_waiting();
-            let passphrase = protocol::Passphrase::new(&pass)?;
+            let passphrase = protocol::Passphrase::new(pass)?;
             cc.set_passphrase(passphrase)?;
 
             let xpub = loop {
@@ -496,7 +497,7 @@ fn handle(cli: Cli) -> Result<(), Error> {
             };
 
             if let Some(psbt_out) = psbt_out {
-                let mut out = File::create(&psbt_out)?;
+                let mut out = File::create(psbt_out)?;
                 out.write_all(tx_string.as_bytes())?;
             } else {
                 println!("{}", tx_string);
@@ -554,7 +555,7 @@ fn handle(cli: Cli) -> Result<(), Error> {
 
         Command::Xfp => {
             if let Some(XpubInfo { fingerprint, .. }) = xpub_info {
-                let hex = hex::encode_upper(&fingerprint);
+                let hex = hex::encode_upper(fingerprint);
                 println!("{}", hex);
             }
         }
@@ -568,7 +569,7 @@ fn handle(cli: Cli) -> Result<(), Error> {
             if xfp {
                 let pk = util::decode_xpub(&xpub).expect("Unable to decode xpub; Coldcard error");
                 let xfp = util::xfp(&pk);
-                let hex = hex::encode_upper(&xfp);
+                let hex = hex::encode_upper(xfp);
                 println!("{}", hex);
             }
 
@@ -589,9 +590,9 @@ fn now() -> u64 {
 
 fn calc_local_pincode(psbt_checksum: &[u8; 32], next_code: &str) -> Result<String, Error> {
     let key = base64::decode(next_code).map_err(|_| Error::InvalidBase64)?;
-    let digest = hmac_sha256::HMAC::mac(psbt_checksum, &key);
+    let digest = hmac_sha256::HMAC::mac(psbt_checksum, key);
     let last = digest[28..32].try_into().expect("cannot fail");
-    let num = (u32::from_be_bytes(last) & &0x7FFFFFFF) % 1000000;
+    let num = (u32::from_be_bytes(last) & 0x7FFFFFFF) % 1000000;
     Ok(format!("{:#06}", num))
 }
 
@@ -600,7 +601,7 @@ fn sleep() {
 }
 
 fn parse_6_digit_token(s: &str) -> Result<protocol::AuthToken, Error> {
-    if s.len() == 6 && s.chars().all(|c| c.is_digit(10)) {
+    if s.len() == 6 && s.chars().all(|c| c.is_ascii_digit()) {
         Ok(protocol::AuthToken::new(s)?)
     } else {
         Err(Error::NotAuthToken)
@@ -619,7 +620,7 @@ fn load_psbt(path: &PathBuf) -> Result<Vec<u8>, Error> {
         // the danger here is the user will paste into something like Vim
         // which will append a newline (invalid in both b64 or hex)
         while let Some(c) = d.last() {
-            if c == &('\n' as u8) || c == &('\r' as u8) {
+            if c == &b'\n' || c == &b'\r' {
                 d.pop();
             } else {
                 break;

@@ -2,21 +2,18 @@
 use std::fmt::Write;
 
 /// BIP32 derivation path.
-#[derive(Debug)]
-pub struct DerivationPath(Vec<Child>);
+#[derive(Debug, Default)]
+pub struct DerivationPath(Box<[Child]>);
 
 impl DerivationPath {
     pub fn new(value: &str) -> Result<Self, Error> {
         let mut segments = value.split('/');
         match segments.next() {
-            Some(m) if m == "m" => (),
+            Some("m") => (),
             _ => return Err(Error::InvalidFormat),
         }
 
-        let children = segments
-            .map(Child::from_str)
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>()?;
+        let children = segments.map(|c| c.parse()).collect::<Result<Box<_>, _>>()?;
 
         if children.len() > 12 {
             return Err(Error::TooDeep);
@@ -32,17 +29,11 @@ impl DerivationPath {
 
 impl std::fmt::Display for DerivationPath {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_char('m')?;
-        for child in self.0.iter() {
-            f.write_fmt(format_args!("/{}", child))?;
+        write!(f, "m")?;
+        for child in self.children() {
+            write!(f, "/{}", child)?;
         }
         Ok(())
-    }
-}
-
-impl Default for DerivationPath {
-    fn default() -> Self {
-        Self(Default::default())
     }
 }
 
@@ -53,7 +44,7 @@ impl TryFrom<Vec<Child>> for DerivationPath {
         if value.len() > 12 {
             Err(Error::TooDeep)
         } else {
-            Ok(DerivationPath(value))
+            Ok(DerivationPath(value.into()))
         }
     }
 }
@@ -66,7 +57,18 @@ pub enum Child {
 }
 
 impl Child {
-    pub fn from_str(c: &str) -> Result<Self, Error> {
+    pub fn value(&self) -> u32 {
+        match self {
+            Child::Normal(i) => *i,
+            Child::Hardened(i) => i | (1 << 31),
+        }
+    }
+}
+
+impl std::str::FromStr for Child {
+    type Err = Error;
+
+    fn from_str(c: &str) -> Result<Self, Self::Err> {
         let is_hardened = c.chars().last().map_or(false, |l| l == '\'' || l == 'h');
         let i: u32 = (if is_hardened { &c[0..c.len() - 1] } else { c })
             .parse()
@@ -80,13 +82,6 @@ impl Child {
             }
         } else {
             Err(Error::InvalidChild)
-        }
-    }
-
-    pub fn value(&self) -> u32 {
-        match self {
-            Child::Normal(i) => *i,
-            Child::Hardened(i) => i | (1 << 31),
         }
     }
 }
@@ -125,5 +120,11 @@ mod test {
         assert_eq!(Some(&Child::Normal(3)), path.next());
         assert_eq!(Some(&Child::Normal(4)), path.next());
         assert_eq!(None, path.next());
+    }
+
+    #[test]
+    fn display() {
+        let path = DerivationPath::new("m/44'/1'/2'/3/4").unwrap();
+        assert_eq!(path.to_string(), "m/44'/1'/2'/3/4");
     }
 }

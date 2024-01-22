@@ -41,3 +41,27 @@ pub fn xfp(pk: &k256::PublicKey) -> [u8; 4] {
     let hash = ripemd160(&sha256(&pk.to_sec1_bytes()));
     hash.as_slice()[..4].try_into().expect("cannot fail")
 }
+
+/// Wraps an instance that's either owned or borrowed.
+pub enum MaybeOwned<'a, T> {
+    Owned(T),
+    Borrowed(&'a mut T),
+}
+
+impl<'a, T> AsRef<T> for MaybeOwned<'a, T> {
+    fn as_ref(&self) -> &T {
+        match self {
+            MaybeOwned::Owned(owned) => owned,
+            MaybeOwned::Borrowed(borrowed) => borrowed,
+        }
+    }
+}
+
+impl<'a, T> AsMut<T> for MaybeOwned<'a, T> {
+    fn as_mut(&mut self) -> &mut T {
+        match self {
+            MaybeOwned::Owned(owned) => owned,
+            MaybeOwned::Borrowed(borrowed) => borrowed,
+        }
+    }
+}

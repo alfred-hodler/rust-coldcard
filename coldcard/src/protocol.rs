@@ -348,7 +348,7 @@ impl Request {
             } => {
                 let mut buf = cmd("p2sh");
                 buf.extend((address_format as u32).to_le_bytes());
-                buf.extend((min_signers as u8).to_le_bytes());
+                buf.extend(min_signers.to_le_bytes());
                 buf.extend((xfp_paths.len() as u8).to_le_bytes());
                 buf.extend((redeem_script.0.len() as u16).to_le_bytes());
                 buf.extend(redeem_script.0);
@@ -562,6 +562,7 @@ impl Response {
     }
 
     /// Extract public key value.
+    #[allow(clippy::type_complexity)]
     pub fn into_my_pub(self) -> Result<([u8; 64], [u8; 4], Option<String>), Self> {
         if let Self::MyPub {
             dev_pubkey,
