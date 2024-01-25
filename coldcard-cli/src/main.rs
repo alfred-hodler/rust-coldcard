@@ -68,6 +68,10 @@ enum Command {
         path: Option<PathBuf>,
     },
 
+    /// Installs the udev file required to detect Coldcards on Linux.
+    #[cfg(target_os = "linux")]
+    InstallUdevRules,
+
     /// List the serial numbers of connected Coldcards
     List,
 
@@ -194,7 +198,7 @@ enum AuthMode {
     HMAC,
 }
 
-#[derive(clap::ArgEnum, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(clap::ArgEnum, Clone)]
 enum SignMode {
     /// Visualize only, no signing
     Visualize,
@@ -236,11 +240,39 @@ fn handle(cli: Cli) -> Result<(), Error> {
     let mut api = coldcard::Api::new()?;
     let serials = api.detect()?;
 
-    if let Command::List = cli.command {
-        for cc in serials {
-            println!("{}", cc.as_ref());
+    // Commands we can handle without a Coldcard connection.
+    match cli.command {
+        Command::List => {
+            for cc in serials {
+                println!("{}", cc.as_ref());
+            }
+
+            return Ok(());
         }
-        return Ok(());
+
+        #[cfg(target_os = "linux")]
+        Command::InstallUdevRules => {
+            const UDEV_FILE: &str = "/etc/udev/rules.d/51-coinkite.rules";
+
+            if std::path::Path::new(UDEV_FILE).exists() {
+                eprintln!("udev rules already installed");
+            } else {
+                match std::fs::File::create(UDEV_FILE) {
+                    Ok(mut file) => {
+                        file.write_all(include_bytes!("../../51-coinkite.rules"))?;
+                        eprintln!("udev rules installed");
+                    }
+                    Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied => {
+                        eprintln!("Permission denied. Try with sudo?");
+                    }
+                    Err(err) => eprintln!("error: {}", err),
+                }
+            }
+
+            return Ok(());
+        }
+
+        _ => {}
     }
 
     let sn = match cli.serial {
@@ -353,6 +385,9 @@ fn handle(cli: Cli) -> Result<(), Error> {
             cc.hsm_start(None)?;
             eprintln!("OK");
         }
+
+        #[cfg(target_os = "linux")]
+        Command::InstallUdevRules => unreachable!("handled earlier"),
 
         Command::List => unreachable!("handled earlier if no command"),
 
