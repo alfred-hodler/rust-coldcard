@@ -14,8 +14,7 @@ let mut api = coldcard::Api::new()?;
 let serials = api.detect()?;
 
 // get the first serial and open it
-let first = serials.into_iter().next().unwrap();
-let (mut cc, master_xpub) = api.open(first, None).unwrap();
+let (mut cc, master_xpub) = api.open(&serials[0], None)?;
 
 // set a passphrase
 coldcard.set_passphrase(protocol::Passphrase::new("secret")?)?;
@@ -33,7 +32,7 @@ coldcard.logout()?;
 
 ## Linux Specific Instructions
 
-In order to be able to detect a Coldcard device on a Linux system, [51-coinkite.rules](../51-coinkite.rules) must be placed in `/etc/udev/rules.d/`.
+In order to be able to detect a Coldcard device on a Linux system, [51-coinkite.rules](../51-coinkite.rules) must be placed in `/etc/udev/rules.d/`. This can be installed using the CLI tool.
 
 Two mutually exclusive HID backends are supported and can be turned on using the following features:
 

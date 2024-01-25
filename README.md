@@ -3,6 +3,7 @@
 [![Documentation](https://img.shields.io/docsrs/coldcard)](https://docs.rs/coldcard/latest/coldcard/)
 [![Crates.io](https://img.shields.io/crates/v/coldcard.svg)](https://crates.io/crates/coldcard)
 [![License](https://img.shields.io/crates/l/coldcard.svg)](https://github.com/alfred-hodler/rust-coldcard/blob/master/coldcard/LICENSE)
+[![Test Status](https://github.com/alfred-hodler/rust-coldcard/actions/workflows/rust.yml/badge.svg?branch=master)](https://github.com/alfred-hodler/rust-coldcard/actions)
 
 This is a workspace that contains crates used for interfacing with the [Coldcard](https://coldcard.com/) hardware wallet.
 
