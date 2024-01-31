@@ -264,7 +264,7 @@ fn handle(cli: Cli) -> Result<(), Error> {
             } else {
                 match std::fs::File::create(UDEV_FILE) {
                     Ok(mut file) => {
-                        file.write_all(include_bytes!("../../51-coinkite.rules"))?;
+                        file.write_all(include_bytes!("../51-coinkite.rules"))?;
                         eprintln!("udev rules installed");
                     }
                     Err(err) if err.kind() == std::io::ErrorKind::PermissionDenied => {
