@@ -51,16 +51,11 @@ pub struct XfpPath {
 }
 
 #[repr(u32)]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub enum FileNo {
     Zero = 0,
+    #[default]
     One = 1,
-}
-
-impl Default for FileNo {
-    fn default() -> Self {
-        Self::One
-    }
 }
 
 impl_new_with_range!(DescriptorName, 2..40);

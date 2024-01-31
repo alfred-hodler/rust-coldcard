@@ -1,6 +1,6 @@
 # Coldcard Interface Library
 
-`coldcard` is a library for interfacing with the [Coldcard](https://coldcard.com/) hardware wallet.
+`coldcard` is a library for interfacing with the [Coldcard](https://coldcard.com/) hardware wallet over USB.
 
 ## Usage
 
@@ -45,7 +45,7 @@ The `log` feature enables logging using the `log` crate. Disabled by default. Us
 
 ## CLI
 
-This project also offers a CLI tool. See the project's own crate for more information.
+This project also offers a CLI tool. See the crate's own README for more information.
 
 Install it with:
 

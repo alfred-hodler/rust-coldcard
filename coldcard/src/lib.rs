@@ -45,7 +45,9 @@ pub mod util;
 use protocol::{DerivationPath, DescriptorName, Request, Response, Username};
 use util::MaybeOwned;
 
+/// Coinkite's HID vendor id.
 pub const COINKITE_VID: u16 = 0xd13e;
+/// Coldcard's HID product id.
 pub const CKCC_PID: u16 = 0xcc10;
 
 /// API for interacting with Coldcard devices.
@@ -314,8 +316,16 @@ impl Coldcard {
 
     /// Uploads a file and verifies the checksum. Returns the checksum
     /// calculated by the device. Fails on checksum verification failure.
-    pub fn upload(&mut self, data: &[u8]) -> Result<[u8; 32], Error> {
+    ///
+    /// `progress` is a closure whose first argument is the number of bytes that have been uploaded
+    /// and the second one is the total number of bytes.
+    pub fn upload<F: FnMut(usize, usize)>(
+        &mut self,
+        data: &[u8],
+        mut progress: F,
+    ) -> Result<[u8; 32], Error> {
         let checksum = util::sha256(data);
+        let mut uploaded = 0;
 
         for (i, blk) in data.chunks(constants::MAX_BLK_LEN).enumerate() {
             let blk_offset = (i * constants::MAX_BLK_LEN) as u32;
@@ -330,6 +340,9 @@ impl Coldcard {
             if pos != blk_offset {
                 return Err(Error::TransmissionFailed);
             }
+
+            uploaded += blk.len();
+            progress(uploaded, data.len());
         }
 
         let uploaded_checksum = self.send(Request::Sha256)?.into_binary()?;
@@ -499,7 +512,7 @@ impl Coldcard {
     /// starts the existing policy already on the device.
     pub fn hsm_start(&mut self, policy: Option<&[u8]>) -> Result<(), Error> {
         if let Some(policy) = policy {
-            self.upload(policy)?;
+            self.upload(policy, |_, _| {})?;
             self.send(Request::HsmStart(Some(protocol::HsmStartParams {
                 file_sha: util::sha256(policy),
                 length: policy.len() as u32,
@@ -548,7 +561,7 @@ impl Coldcard {
 
     /// Enroll miniscript file.
     pub fn miniscript_enroll(&mut self, descriptor: &[u8]) -> Result<(), Error> {
-        let file_sha = self.upload(descriptor)?;
+        let file_sha = self.upload(descriptor, |_, _| {})?;
 
         self.send(Request::MiniscriptEnroll {
             length: descriptor.len() as u32,
@@ -616,7 +629,7 @@ impl Coldcard {
     /// Initiates PSBT signing and causes the Coldcard to prompt the user to confirm.
     /// This does not immediately return a signed tx, use `get_signed_tx` for that.
     pub fn sign_psbt(&mut self, psbt: &[u8], sign_mode: SignMode) -> Result<(), Error> {
-        let file_sha = self.upload(psbt)?;
+        let file_sha = self.upload(psbt, |_, _| {})?;
 
         self.send(Request::SignTransaction {
             length: psbt.len() as u32,
@@ -657,9 +670,17 @@ impl Coldcard {
         Ok(())
     }
 
-    /// Upgrades the firmware on the Coldcard. It does not reboot automatically.
-    pub fn upgrade(&mut self, firmware: firmware::Firmware) -> Result<(), Error> {
-        self.upload(&firmware.0)?;
+    /// Upgrades the firmware on the Coldcard. It does not reboot automatically. Reboot must be
+    /// called to finish the process.
+    ///
+    /// `progress` is a closure whose first argument is the number of bytes that have been uploaded
+    /// and the second one is the total number of bytes.
+    pub fn upgrade<F: FnMut(usize, usize)>(
+        &mut self,
+        firmware: firmware::Firmware,
+        progress: F,
+    ) -> Result<(), Error> {
+        self.upload(firmware.bytes(), progress)?;
         Ok(())
     }
 

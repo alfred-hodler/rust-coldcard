@@ -1,3 +1,5 @@
+#![allow(clippy::result_large_err)]
+
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
@@ -7,6 +9,8 @@ use coldcard::{firmware, Backup, SignedMessage};
 use coldcard::{util, XpubInfo};
 
 use clap::Parser;
+
+mod fw_upgrade;
 
 #[derive(clap::Parser)]
 #[clap(author, version, about)]
@@ -138,10 +142,11 @@ enum Command {
     /// Test USB connection
     Test,
 
-    /// Upgrade the firmware
+    /// Download and upgrade to the latest firmware, or upgrade from file.
     Upgrade {
-        /// The path to the firmware file
-        path: PathBuf,
+        /// The path to the firmware file. If none, runs in the interactive (auto download) mode
+        /// trying to find the best match on the official website.
+        path: Option<PathBuf>,
     },
 
     /// Create a new HSM user. The secret is generated on the device
@@ -282,6 +287,7 @@ fn handle(cli: Cli) -> Result<(), Error> {
     .ok_or(Error::NoColdcardDetected)?;
 
     let (mut cc, xpub_info) = api.open(sn, None)?;
+    cc.resync()?;
 
     // check for MITM if requested
     let expected_xpub = cli.xpub;
@@ -545,14 +551,134 @@ fn handle(cli: Cli) -> Result<(), Error> {
             eprintln!("OK")
         }
 
-        Command::Upgrade { path } => {
+        Command::Upgrade { path: Some(path) } => {
             let firmware = firmware::Firmware::load_dfu(&path)?;
+            ProgressBar::new(1, 2, "📁 Load firmware").finish();
+            complete_upgrade(cc, firmware)?;
+        }
 
-            eprintln!("Uploading firmware, observe the Coldcard for progress...");
-            cc.upgrade(firmware)?;
+        Command::Upgrade { path: None } => {
+            eprintln!(
+                "Searching {} for available firmwares...",
+                console::Style::new()
+                    .underlined()
+                    .bold()
+                    .apply_to(fw_upgrade::DOWNLOADS)
+            );
 
-            eprintln!("Firmware uploaded; rebooting...");
-            cc.reboot()?
+            let releases = match fw_upgrade::Release::find() {
+                Ok(releases) => releases,
+                Err(_) => {
+                    eprintln!("Cannot fetch available releases.");
+                    return Ok(());
+                }
+            };
+
+            let cc_info = cc.version()?;
+
+            let our_fw = cc_info
+                .lines()
+                .nth(1)
+                .and_then(|v| v.parse::<semver::Version>().ok());
+            let our_model = cc_info.lines().nth(4);
+
+            let bold = console::Style::new().bold();
+
+            let mode = prompt(
+                "Auto determine the best firmware or select manually?",
+                &["auto", "manual"],
+            );
+
+            eprintln!(
+                "Our model and firmware: {} - {}",
+                bold.apply_to(our_model.unwrap_or("unknown")),
+                bold.apply_to(
+                    our_fw
+                        .as_ref()
+                        .map(|v| format!("v{}", v))
+                        .unwrap_or("unknown".to_owned())
+                )
+            );
+
+            let release = if mode == "auto" {
+                match fw_upgrade::best_match(&releases, our_model) {
+                    Some(release) => {
+                        eprintln!(
+                            "Best firmware match: {} ({}) ",
+                            bold.apply_to(format!("v{}", release.version)),
+                            release.name
+                        );
+
+                        if Some(&release.version) <= our_fw.as_ref() {
+                            eprintln!("The device already has the latest firmware.");
+                            return Ok(());
+                        }
+
+                        release
+                    }
+                    None => {
+                        warn(
+                        "Cannot determine a good firmware match for your device. Proceed manually."
+                    );
+                        return Ok(());
+                    }
+                }
+            } else {
+                eprintln!();
+                for (i, r) in releases.iter().enumerate() {
+                    eprintln!(
+                        "({i})\t{}\t{}",
+                        r.name,
+                        r.is_edge.then_some("(* experimental)").unwrap_or_default()
+                    );
+                }
+
+                eprintln!();
+                warn("Ensure that the chosen firmware is appropriate for your device.");
+                eprint!(
+                    "Enter a number next to the wanted firmware (0-{}): ",
+                    releases.len() - 1
+                );
+
+                let mut choice = String::new();
+                std::io::stdin().read_line(&mut choice).unwrap();
+
+                match choice.trim().parse::<usize>() {
+                    Ok(i) if i < releases.len() => {
+                        let r = &releases[i];
+                        eprintln!("Selected firmware: {} ({}) ", r.version, r.name);
+                        r
+                    }
+                    _ => {
+                        eprintln!("ERROR: Invalid choice.");
+                        return Ok(());
+                    }
+                }
+            };
+
+            if release.is_edge {
+                warn("The selected release is \"edge\" (experimental).");
+            }
+
+            let choice = prompt("Proceed?", &["Yes", "no"]);
+            if choice != "Yes" {
+                eprintln!("Aborted");
+                return Ok(());
+            }
+
+            let pb = ProgressBar::new(1, 2, "⬇️  Download");
+
+            let fw_bytes = release
+                .download(|downloaded, total| {
+                    pb.update(downloaded as u64, total as u64);
+                })
+                .unwrap();
+
+            pb.finish();
+
+            let firmware = firmware::Firmware::parse_dfu(&mut std::io::Cursor::new(fw_bytes))?;
+
+            complete_upgrade(cc, firmware)?;
         }
 
         Command::User {
@@ -676,8 +802,29 @@ fn load_psbt(path: &PathBuf) -> Result<Vec<u8>, Error> {
     }
 }
 
+fn complete_upgrade(mut cc: coldcard::Coldcard, firmware: firmware::Firmware) -> Result<(), Error> {
+    let pb = ProgressBar::new(2, 2, "💾 Flashing");
+    let size = firmware.bytes().len();
+
+    cc.upgrade(firmware, |uploaded, _| {
+        pb.update(uploaded as u64, size as u64);
+    })?;
+
+    pb.finish();
+
+    eprintln!("Proceed on the Coldcard to complete the process.");
+    cc.reboot()?;
+
+    Ok(())
+}
+
 fn print_waiting() {
     eprintln!("Waiting for OK on the Coldcard...");
+}
+
+fn warn(text: &str) {
+    let warn = console::Style::new().color256(202).bold();
+    eprintln!("{} {}", warn.apply_to("WARNING:"), text);
 }
 
 #[derive(Debug)]
@@ -728,5 +875,62 @@ impl From<protocol::EncodeError> for Error {
 impl From<std::io::Error> for Error {
     fn from(error: std::io::Error) -> Self {
         Self::Io(error)
+    }
+}
+
+fn prompt<'a>(text: &'static str, choices: &'a [&str]) -> &'a str {
+    let bold = console::Style::new().bold();
+
+    let formatted = choices
+        .iter()
+        .map(|c| {
+            let (first, rest) = c.split_at(1);
+            format!("[{}]{}", bold.apply_to(first), rest)
+        })
+        .collect::<Vec<_>>()
+        .join("/");
+
+    let mut input = String::new();
+    loop {
+        eprint!("{text} {formatted} ");
+        input.clear();
+        std::io::stdin().read_line(&mut input).unwrap();
+        let choice = input.trim().chars().next();
+        if let Some(i) = choices.iter().position(|c| c.chars().next() == choice) {
+            return choices[i];
+        }
+    }
+}
+
+struct ProgressBar {
+    pb: indicatif::ProgressBar,
+}
+
+impl ProgressBar {
+    pub fn new(step: u16, steps: u16, action: &'static str) -> Self {
+        const PROG_TEMPLATE: &str =
+                "{prefix:.bold}: {spinner:.green} [{bar:40.green}] [{percent}%] ({bytes}/{total_bytes})";
+
+        Self {
+            pb: indicatif::ProgressBar::new(100)
+                .with_style(indicatif::ProgressStyle::with_template(PROG_TEMPLATE).unwrap())
+                .with_finish(indicatif::ProgressFinish::Abandon)
+                .with_prefix(format!("[{step}/{steps}] {action}")),
+        }
+    }
+
+    fn update(&self, pos: u64, length: u64) {
+        self.pb.update(|s| {
+            s.set_pos(pos);
+            s.set_len(length);
+        });
+    }
+
+    pub fn finish(self) {
+        const FIN_TEMPLATE: &str = "{prefix:.bold}: Complete ✅";
+
+        self.pb
+            .set_style(indicatif::ProgressStyle::with_template(FIN_TEMPLATE).unwrap());
+        self.pb.tick();
     }
 }
