@@ -5,7 +5,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 
 use coldcard::protocol::{self, derivation_path, Response};
-use coldcard::{firmware, Backup, SignedMessage};
+use coldcard::{firmware, Backup, Options, SignedMessage};
 use coldcard::{util, XpubInfo};
 
 use clap::Parser;
@@ -286,8 +286,13 @@ fn handle(cli: Cli) -> Result<(), Error> {
     }
     .ok_or(Error::NoColdcardDetected)?;
 
-    let (mut cc, xpub_info) = api.open(sn, None)?;
-    cc.resync()?;
+    let (mut cc, xpub_info) = api.open(
+        sn,
+        Some(Options {
+            resync_on_open: true,
+            ..Default::default()
+        }),
+    )?;
 
     // check for MITM if requested
     let expected_xpub = cli.xpub;
@@ -453,7 +458,7 @@ fn handle(cli: Cli) -> Result<(), Error> {
                 }
             };
 
-            let encoded_sig = base64::encode(signature);
+            let encoded_sig = b64_encode(&signature);
             if armor {
                 let armor = format!(
                     "\
@@ -533,7 +538,7 @@ fn handle(cli: Cli) -> Result<(), Error> {
             let tx_string = match mode {
                 SignMode::Visualize => String::from_utf8(tx).unwrap(),
                 SignMode::VisualizeSigned => String::from_utf8(tx).unwrap(),
-                SignMode::Finalize if base64 => base64::encode(&tx),
+                SignMode::Finalize if base64 => b64_encode(&tx),
                 SignMode::Finalize => hex::encode(&tx),
             };
 
@@ -750,7 +755,7 @@ fn now() -> u64 {
 }
 
 fn calc_local_pincode(psbt_checksum: &[u8; 32], next_code: &str) -> Result<String, Error> {
-    let key = base64::decode(next_code).map_err(|_| Error::InvalidBase64)?;
+    let key = b64_decode(next_code).map_err(|_| Error::InvalidBase64)?;
     let digest = hmac_sha256::HMAC::mac(psbt_checksum, key);
     let last = digest[28..32].try_into().expect("cannot fail");
     let num = (u32::from_be_bytes(last) & 0x7FFFFFFF) % 1000000;
@@ -794,7 +799,7 @@ fn load_psbt(path: &PathBuf) -> Result<Vec<u8>, Error> {
         hex::decode(&data).map_err(|_| Error::InvalidPSBT)
     } else if &header[..6] == b"cHNidP" {
         trimmed(&mut data);
-        base64::decode(&data).map_err(|_| Error::InvalidPSBT)
+        b64_decode(&data).map_err(|_| Error::InvalidPSBT)
     } else if &header[..5] == b"psbt\xff" {
         Ok(data)
     } else {
@@ -933,4 +938,14 @@ impl ProgressBar {
             .set_style(indicatif::ProgressStyle::with_template(FIN_TEMPLATE).unwrap());
         self.pb.tick();
     }
+}
+
+fn b64_encode(data: &[u8]) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.encode(data)
+}
+
+fn b64_decode(data: impl AsRef<[u8]>) -> Result<Vec<u8>, base64::DecodeError> {
+    use base64::Engine;
+    base64::engine::general_purpose::STANDARD.decode(data)
 }

@@ -53,8 +53,12 @@ impl Firmware {
             if (0..elements).next().is_some() {
                 let mut eprefix = [0_u8; 8];
                 stream.read_exact(&mut eprefix)?;
+                let address = decode_u32(eprefix.get(0..4))?;
                 let size = decode_u32(eprefix.get(4..8))?;
 
+                if address < 0x8008000 {
+                    return Err(Error::BadAddress);
+                }
                 if size % 256 != 0 {
                     return Err(Error::UnalignedSize);
                 }

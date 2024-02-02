@@ -1,7 +1,6 @@
 # Coldcard CLI
 
-`coldcard-cli` is a CLI tool for interfacing with the [Coldcard](https://coldcard.com/) hardware wallet over USB.
-
+`coldcard-cli` is a firmware upgrade and general management tool for the [Coldcard](https://coldcard.com/) hardware wallet.
 
 Install it with:
 

@@ -20,9 +20,10 @@ impl Release {
         let page = fetch_download_page()?;
 
         let mut found: Vec<_> = firmware_regex()
-            .find_iter(&page)
+            .captures_iter(&page)
             .map(|m| {
-                let version = version_regex().find(m.as_str()).unwrap();
+                let name = m.get(0).unwrap();
+                let version = m.get(1).unwrap();
                 let edge_marker = version.as_str().find('X');
                 let (version, is_edge) = match edge_marker {
                     Some(pos) => (Version::parse(&version.as_str()[1..pos]), true),
@@ -30,7 +31,7 @@ impl Release {
                 };
 
                 Release {
-                    name: m.as_str().to_owned(),
+                    name: name.as_str().to_owned(),
                     version: version.unwrap(),
                     is_edge,
                 }
@@ -94,10 +95,6 @@ fn fetch_download_page() -> Result<String, ureq::Error> {
 }
 
 fn firmware_regex() -> Regex {
-    Regex::new(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]+-v[0-9]+\.[0-9]+\.[0-9]+X?(-mk.)?-coldcard.dfu")
+    Regex::new(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]+-(v[0-9]+\.[0-9]+\.[0-9]+X?)(-mk.)?-coldcard.dfu")
         .unwrap()
-}
-
-fn version_regex() -> Regex {
-    Regex::new(r"v[0-9]+\.[0-9]+\.[0-9]+X?").unwrap()
 }

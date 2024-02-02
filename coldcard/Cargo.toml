@@ -1,6 +1,6 @@
 [package]
 name = "coldcard"
-version = "0.12.0"
+version = "0.12.1"
 edition = "2021"
 authors = ["Alfred Hodler <alfred_hodler@protonmail.com>"]
 license = "MIT"
@@ -17,8 +17,8 @@ linux-static-libusb = ["hidapi/linux-static-libusb"]
 [dependencies]
 aes-ctr = "0.6.0"
 base58 = "0.2.0"
-bitcoin_hashes = "0.12.0"
+bitcoin_hashes = "0.13.0"
 hidapi = { version = "2.4.1", default-features = false }
-k256 = { version = "0.13.1", features = ["arithmetic"] }
-log = { version = "0.4.17", optional = true }
+k256 = { version = "0.13.3", features = ["arithmetic"] }
+log = { version = "0.4.20", optional = true }
 rand = "0.8.5"

@@ -659,7 +659,7 @@ impl Coldcard {
         let mut rng = rand::thread_rng();
 
         for len in lengths {
-            let mut ping = Vec::new();
+            let mut ping = vec![0; len];
             rng.fill_bytes(&mut ping);
             let pong = self.send(Request::Ping(ping.clone()))?.into_binary()?;
             if ping != pong {
@@ -793,6 +793,8 @@ fn recv(
     read_buf: &mut [u8; 64],
 ) -> Result<Response, Error> {
     let mut data: Vec<u8> = Vec::new();
+    let mut packet_no = 0_u32;
+
     let (data, is_encrypted) = loop {
         #[cfg(feature = "log")]
         log::trace!("reading packet...");
@@ -803,11 +805,14 @@ fn recv(
         }
         let flag = read_buf[0];
         let is_last = flag & 0x80 != 0;
+        let is_fram = &read_buf[1..5] == b"fram" && packet_no == 0;
+        // firmware bug mitigation: `fram` responses are one packet but forget to set 0x80
+        let is_last = is_last || is_fram;
         let is_encrypted = flag & 0x40 != 0;
         let length = (flag & 0x3f) as usize;
 
         #[cfg(feature = "log")]
-        log::debug!("packet read ({} bytes)", length);
+        log::debug!("packet #{} read ({} bytes)", packet_no, length);
 
         // this is a small optimization to avoid vector allocation
         // when a response is sufficiently small to fit the buffer
@@ -819,6 +824,8 @@ fn recv(
                 break (&mut data, is_encrypted);
             }
         }
+
+        packet_no += 1;
     };
 
     if is_encrypted {
@@ -871,7 +878,7 @@ fn resync(cc: &mut hidapi::HidDevice, read_buf: &mut [u8; 64]) -> Result<(), Err
 
     read_junk(cc, read_buf)?;
 
-    let mut special_packet = vec![0xff_u8, 65];
+    let mut special_packet = [0xff_u8, 65];
     special_packet[0] = 0x00;
     special_packet[1] = 0x80;
     cc.write(&special_packet)?;
