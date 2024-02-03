@@ -15,10 +15,11 @@ linux-static-hidraw = ["hidapi/linux-static-hidraw"]
 linux-static-libusb = ["hidapi/linux-static-libusb"]
 
 [dependencies]
-aes-ctr = "0.6.0"
+aes = "0.8.3"
 base58 = "0.2.0"
 bitcoin_hashes = "0.13.0"
-hidapi = { version = "2.4.1", default-features = false }
+ctr = "0.9.2"
+hidapi = { version = "2.5.1", default-features = false }
 k256 = { version = "0.13.3", features = ["arithmetic"] }
 log = { version = "0.4.20", optional = true }
 rand = "0.8.5"

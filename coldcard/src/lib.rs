@@ -45,6 +45,8 @@ pub mod util;
 use protocol::{DerivationPath, DescriptorName, Request, Response, Username};
 use util::MaybeOwned;
 
+type Aes256Ctr = ctr::Ctr64BE<aes::Aes256>;
+
 /// Coinkite's HID vendor id.
 pub const COINKITE_VID: u16 = 0xd13e;
 /// Coldcard's HID product id.
@@ -191,8 +193,8 @@ pub enum SignMode {
 pub struct Coldcard {
     cc: hidapi::HidDevice,
     session_key: [u8; 32],
-    encrypt: aes_ctr::Aes256Ctr,
-    decrypt: aes_ctr::Aes256Ctr,
+    encrypt: Aes256Ctr,
+    decrypt: Aes256Ctr,
     sn: String,
 
     // performance helpers
@@ -249,8 +251,7 @@ impl Coldcard {
         let session_key = session_key(our_sk, cc_pk)?;
 
         let (encrypt, decrypt) = {
-            use aes_ctr::cipher::{generic_array::GenericArray, stream::NewStreamCipher};
-            use aes_ctr::Aes256Ctr;
+            use aes::cipher::{generic_array::GenericArray, KeyIvInit};
 
             let key = GenericArray::from_slice(&session_key);
             let nonce = GenericArray::from_slice(&[0_u8; 16]);
@@ -739,7 +740,7 @@ fn session_key(sk: k256::SecretKey, pk: k256::PublicKey) -> Result<[u8; 32], Err
 fn send(
     request: Request,
     cc: &mut hidapi::HidDevice,
-    cipher: Option<&mut aes_ctr::Aes256Ctr>,
+    cipher: Option<&mut Aes256Ctr>,
     send_buf: &mut [u8; 2 + constants::CHUNK_SIZE],
 ) -> Result<(), Error> {
     let mut data = request.encode();
@@ -756,7 +757,7 @@ fn send(
     }
 
     if let Some(cipher) = cipher {
-        use aes_ctr::cipher::stream::SyncStreamCipher;
+        use aes::cipher::StreamCipher;
         cipher.apply_keystream(&mut data);
     }
 
@@ -789,7 +790,7 @@ fn send(
 /// Reads a response from a Coldcard.
 fn recv(
     cc: &mut hidapi::HidDevice,
-    cipher: Option<&mut aes_ctr::Aes256Ctr>,
+    cipher: Option<&mut Aes256Ctr>,
     read_buf: &mut [u8; 64],
 ) -> Result<Response, Error> {
     let mut data: Vec<u8> = Vec::new();
@@ -830,7 +831,7 @@ fn recv(
 
     if is_encrypted {
         if let Some(cipher) = cipher {
-            use aes_ctr::cipher::stream::SyncStreamCipher;
+            use aes::cipher::StreamCipher;
             cipher.apply_keystream(data);
         } else {
             return Err(Error::EncryptionNotSetUp);
