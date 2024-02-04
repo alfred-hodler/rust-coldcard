@@ -1,3 +1,4 @@
+use coldcard::util;
 use regex::Regex;
 use semver::Version;
 
@@ -39,6 +40,7 @@ impl Release {
             .collect();
 
         found.sort_by(|a, b| a.version.cmp(&b.version));
+        found.dedup_by(|a, b| a.name == b.name);
         found.reverse();
 
         Ok(found)
@@ -74,6 +76,22 @@ impl Release {
 
         Ok(bytes)
     }
+
+    /// Verifies the checksum of the downloaded firmware release.
+    pub fn verify(&self, dl: &[u8]) -> Result<(), &'static str> {
+        let sigs = fetch_signatures().map_err(|_| "Cannot fetch signature file")?;
+        let line = sigs
+            .lines()
+            .find(|l| l.ends_with(&self.name))
+            .ok_or("Cannot find checksum")?;
+        let checksum = &line[0..64];
+
+        if checksum == hex::encode(util::sha256(dl)) {
+            Ok(())
+        } else {
+            Err("Checksum mismatch")
+        }
+    }
 }
 
 pub fn best_match<'a>(releases: &'a [Release], our_model: Option<&str>) -> Option<&'a Release> {
@@ -90,6 +108,12 @@ pub fn best_match<'a>(releases: &'a [Release], our_model: Option<&str>) -> Optio
 
 fn fetch_download_page() -> Result<String, ureq::Error> {
     ureq::get(DOWNLOADS)
+        .call()
+        .map(|r| r.into_string().expect("bad utf-8"))
+}
+
+fn fetch_signatures() -> Result<String, ureq::Error> {
+    ureq::get("https://raw.githubusercontent.com/Coldcard/firmware/master/releases/signatures.txt")
         .call()
         .map(|r| r.into_string().expect("bad utf-8"))
 }

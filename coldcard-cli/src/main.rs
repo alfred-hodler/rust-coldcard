@@ -558,8 +558,8 @@ fn handle(cli: Cli) -> Result<(), Error> {
 
         Command::Upgrade { path: Some(path) } => {
             let firmware = firmware::Firmware::load_dfu(&path)?;
-            ProgressBar::new(1, 2, "📁 Load firmware").finish();
-            complete_upgrade(cc, firmware)?;
+            ProgressBar::new(1, 2, "📁 Read    ").finish();
+            complete_upgrade(cc, firmware, 2)?;
         }
 
         Command::Upgrade { path: None } => {
@@ -681,9 +681,19 @@ fn handle(cli: Cli) -> Result<(), Error> {
 
             pb.finish();
 
+            let pb = ProgressBar::new(2, 3, "🔒 Verify  ");
+
+            match release.verify(&fw_bytes) {
+                Ok(_) => pb.finish(),
+                Err(err) => {
+                    pb.finish_with_err(err);
+                    return Ok(());
+                }
+            }
+
             let firmware = firmware::Firmware::parse_dfu(&mut std::io::Cursor::new(fw_bytes))?;
 
-            complete_upgrade(cc, firmware)?;
+            complete_upgrade(cc, firmware, 3)?;
         }
 
         Command::User {
@@ -807,8 +817,12 @@ fn load_psbt(path: &PathBuf) -> Result<Vec<u8>, Error> {
     }
 }
 
-fn complete_upgrade(mut cc: coldcard::Coldcard, firmware: firmware::Firmware) -> Result<(), Error> {
-    let pb = ProgressBar::new(2, 2, "💾 Flashing");
+fn complete_upgrade(
+    mut cc: coldcard::Coldcard,
+    firmware: firmware::Firmware,
+    step: u16,
+) -> Result<(), Error> {
+    let pb = ProgressBar::new(step, step, "💾 Flash   ");
     let size = firmware.bytes().len();
 
     cc.upgrade(firmware, |uploaded, _| {
@@ -828,8 +842,8 @@ fn print_waiting() {
 }
 
 fn warn(text: &str) {
-    let warn = console::Style::new().color256(202).bold();
-    eprintln!("{} {}", warn.apply_to("WARNING:"), text);
+    let prefix = console::Style::new().color256(202).bold();
+    eprintln!("{} {}", prefix.apply_to("WARNING:"), text);
 }
 
 #[derive(Debug)]
@@ -936,6 +950,14 @@ impl ProgressBar {
 
         self.pb
             .set_style(indicatif::ProgressStyle::with_template(FIN_TEMPLATE).unwrap());
+        self.pb.tick();
+    }
+
+    pub fn finish_with_err(self, err: &str) {
+        let err = format!("{{prefix:.bold}}: {} ❌", err);
+
+        self.pb
+            .set_style(indicatif::ProgressStyle::with_template(&err).unwrap());
         self.pb.tick();
     }
 }
