@@ -17,17 +17,17 @@ let serials = api.detect()?;
 let (mut cc, master_xpub) = api.open(&serials[0], None)?;
 
 // set a passphrase
-coldcard.set_passphrase(protocol::Passphrase::new("secret")?)?;
+cc.set_passphrase(protocol::Passphrase::new("secret")?)?;
 
 // after the user confirms
-let xpub = coldcard.get_passphrase_done()?;
+let xpub = cc.get_passphrase_done()?;
 
 if let Some(xpub) = xpub {
     println!("The new XPUB is: {}", xpub);
 }
 
 // secure logout
-coldcard.logout()?;
+cc.logout()?;
 ```
 
 ## Linux Specific Instructions
