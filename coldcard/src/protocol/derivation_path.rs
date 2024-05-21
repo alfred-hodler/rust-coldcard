@@ -13,7 +13,7 @@ impl DerivationPath {
             _ => return Err(Error::InvalidFormat),
         }
 
-        let children = segments.map(|c| c.parse()).collect::<Result<Box<_>, _>>()?;
+        let children: Box<[Child]> = segments.map(|c| c.parse()).collect::<Result<_, _>>()?;
 
         if children.len() > 12 {
             return Err(Error::TooDeep);
