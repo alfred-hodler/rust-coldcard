@@ -11,6 +11,7 @@ use coldcard::{util, XpubInfo};
 use clap::Parser;
 
 mod fw_upgrade;
+mod xpub_version;
 
 #[derive(clap::Parser)]
 #[clap(author, version, about)]
@@ -172,6 +173,10 @@ enum Command {
         /// The optional derivation path
         path: Option<String>,
 
+        #[clap(arg_enum)]
+        /// The extended key version to optionally convert to.
+        version: Option<XpubVersion>,
+
         /// Include the fingerprint. The output will be two lines.
         #[clap(long)]
         xfp: bool,
@@ -229,6 +234,29 @@ impl From<&SignMode> for coldcard::SignMode {
             SignMode::Visualize => coldcard::SignMode::Visualize,
             SignMode::VisualizeSigned => coldcard::SignMode::VisualizeSigned,
             SignMode::Finalize => coldcard::SignMode::Finalize,
+        }
+    }
+}
+
+#[derive(Clone, clap::ArgEnum)]
+enum XpubVersion {
+    Xpub,
+    Ypub,
+    Zpub,
+    Tpub,
+    Upub,
+    Vpub,
+}
+
+impl From<XpubVersion> for xpub_version::Version {
+    fn from(value: XpubVersion) -> Self {
+        match value {
+            XpubVersion::Xpub => Self::Xpub,
+            XpubVersion::Ypub => Self::Ypub,
+            XpubVersion::Zpub => Self::Zpub,
+            XpubVersion::Tpub => Self::Tpub,
+            XpubVersion::Upub => Self::Upub,
+            XpubVersion::Vpub => Self::Vpub,
         }
     }
 }
@@ -736,11 +764,11 @@ fn handle(cli: Cli) -> Result<(), Error> {
             }
         }
 
-        Command::Xpub { path, xfp } => {
+        Command::Xpub { path, version, xfp } => {
             let path = path
                 .map(|p| protocol::DerivationPath::new(&p))
                 .transpose()?;
-            let xpub = cc.xpub(path)?;
+            let mut xpub = cc.xpub(path)?;
 
             if xfp {
                 let pk = util::decode_xpub(&xpub).expect("Unable to decode xpub; Coldcard error");
@@ -749,6 +777,9 @@ fn handle(cli: Cli) -> Result<(), Error> {
                 println!("{}", hex);
             }
 
+            if let Some(version) = version {
+                xpub = xpub_version::convert_bytes(&xpub, version.into())?;
+            }
             println!("{}", xpub);
         }
     }
@@ -859,6 +890,7 @@ enum Error {
     NotAuthToken,
     InvalidPSBT,
     NoColdcardDetected,
+    VersionConvert(xpub_version::Error),
 }
 
 impl From<coldcard::Error> for Error {
@@ -894,6 +926,12 @@ impl From<protocol::EncodeError> for Error {
 impl From<std::io::Error> for Error {
     fn from(error: std::io::Error) -> Self {
         Self::Io(error)
+    }
+}
+
+impl From<xpub_version::Error> for Error {
+    fn from(error: xpub_version::Error) -> Self {
+        Self::VersionConvert(error)
     }
 }
 
