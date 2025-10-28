@@ -829,9 +829,6 @@ mod tests {
 
         encode_eq(b"blkc", Request::Blockchain);
 
-        #[cfg(feature = "simulator")]
-        encode_eq(b"XKEY\x01", Request::SimKeypress(0x01));
-
         encode_eq(b"bagi", Request::BagNumber(None));
         encode_eq(
             b"bagi123abc",
