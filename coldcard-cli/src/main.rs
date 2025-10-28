@@ -240,6 +240,8 @@ enum SignMode {
     VisualizeSigned,
     /// Finalize the transaction
     Finalize,
+    /// Sign the transaction
+    Sign,
 }
 
 impl From<AuthMode> for protocol::AuthMode {
@@ -258,6 +260,7 @@ impl From<&SignMode> for coldcard::SignMode {
             SignMode::Visualize => coldcard::SignMode::Visualize,
             SignMode::VisualizeSigned => coldcard::SignMode::VisualizeSigned,
             SignMode::Finalize => coldcard::SignMode::Finalize,
+            SignMode::Sign => coldcard::SignMode::Signed,
         }
     }
 }
@@ -604,6 +607,7 @@ fn handle(cli: Cli) -> Result<(), Error> {
                 SignMode::VisualizeSigned => String::from_utf8(tx).unwrap(),
                 SignMode::Finalize if base64 => b64_encode(&tx),
                 SignMode::Finalize => hex::encode(&tx),
+                SignMode::Sign => hex::encode(tx),
             };
 
             if let Some(psbt_out) = psbt_out {
