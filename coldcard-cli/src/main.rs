@@ -4,7 +4,7 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 
-use coldcard::protocol::{self, derivation_path, Response};
+use coldcard::protocol::{self, derivation_path, DescriptorName, Response};
 use coldcard::{firmware, Backup, Options, SignedMessage};
 use coldcard::{util, XpubInfo};
 
@@ -52,6 +52,20 @@ enum Command {
         /// The path to the file where the backup should be saved,
         /// including the filename
         path: PathBuf,
+    },
+
+    /// Restore a backup from file
+    Restore {
+        path: PathBuf,
+        /// Backup is encrypted with a custom password
+        #[clap(short, long, action = clap::ArgAction::SetTrue)]
+        password: bool,
+        /// Backup is clear-text (dev)
+        #[clap(short, long, action = clap::ArgAction::SetTrue)]
+        plaintext: bool,
+        /// force load as tmp, effective only on seed-less CC
+        #[clap(short, long, action = clap::ArgAction::SetTrue)]
+        tmp: bool,
     },
 
     /// Show the bag number the Coldcard arrived in
@@ -138,6 +152,9 @@ enum Command {
         base64: bool,
         /// The optional path where to write out the signed tx (default: stdout)
         psbt_out: Option<PathBuf>,
+        /// Optional miniscript wallet name
+        #[clap(long)]
+        miniscript: Option<String>,
     },
 
     /// Test USB connection
@@ -181,6 +198,13 @@ enum Command {
         #[clap(long)]
         xfp: bool,
     },
+
+    /// List miniscript descriptors
+    MiniscriptList,
+    /// Delete a registered miniscript policy
+    MiniscriptDelete { name: String },
+    /// Get a registered miniscript policy by its name
+    MiniscriptPolicy { name: String },
 }
 
 #[derive(clap::ArgEnum, Clone)]
@@ -548,11 +572,23 @@ fn handle(cli: Cli) -> Result<(), Error> {
             psbt_out,
             mode,
             base64,
+            miniscript,
         } => {
             let psbt = load_psbt(&psbt_in)?;
             let sign_mode = (&mode).into();
+            let miniscript = if let Some(name) = miniscript {
+                match DescriptorName::new(name) {
+                    Ok(m) => Some(m),
+                    Err(e) => {
+                        eprintln!("ERROR: Invalid miniscript descriptor name: {e:?}.");
+                        return Ok(());
+                    }
+                }
+            } else {
+                None
+            };
 
-            cc.sign_psbt(&psbt, sign_mode)?;
+            cc.sign_psbt_miniscript(&psbt, sign_mode, miniscript)?;
 
             let tx = loop {
                 sleep();
@@ -781,6 +817,68 @@ fn handle(cli: Cli) -> Result<(), Error> {
                 xpub = xpub_version::convert_bytes(&xpub, version.into())?;
             }
             println!("{}", xpub);
+        }
+        Command::MiniscriptList => {
+            let resp = cc.miniscript_list()?;
+            for m in resp {
+                println!("{m}");
+            }
+        }
+        Command::MiniscriptDelete { name } => {
+            let descriptor_name = match DescriptorName::new(name.clone()) {
+                Ok(n) => n,
+                Err(e) => {
+                    eprintln!("ERROR: Invalid miniscript descriptor name: {e:?}.");
+                    return Ok(());
+                }
+            };
+            if let Err(e) = cc.delete_miniscript(descriptor_name) {
+                eprintln!("ERROR: Fail to delete descriptor {name}: {e:?}")
+            }
+        }
+        Command::MiniscriptPolicy { name } => {
+            let descriptor_name = match DescriptorName::new(name.clone()) {
+                Ok(n) => n,
+                Err(e) => {
+                    eprintln!("ERROR: Invalid miniscript descriptor name: {e:?}.");
+                    return Ok(());
+                }
+            };
+            match cc.bip388_policy_get(descriptor_name) {
+                Ok(Some(p)) => println!("{p}"),
+                Err(e) => {
+                    eprintln!("ERROR: Fail to get miniscript policy for name {name}: {e:?}")
+                }
+                _ => {
+                    eprintln!("ERROR: No descriptor found with name {name}");
+                }
+            }
+        }
+        Command::Restore {
+            password,
+            path,
+            plaintext,
+            tmp,
+        } => {
+            if !path.exists() {
+                eprintln!("ERROR: Path {} does not exists", path.to_str().unwrap());
+                return Ok(());
+            }
+            if !path.is_file() {
+                eprintln!("ERROR: Path {} is not a file", path.to_str().unwrap());
+                return Ok(());
+            }
+            let mut file = match File::open(path.clone()) {
+                Ok(f) => f,
+                Err(e) => {
+                    eprintln!("ERROR: Fail to open file {}: {e}", path.to_str().unwrap());
+                    return Ok(());
+                }
+            };
+            let mut data = vec![];
+            let _ = file.read_to_end(&mut data);
+
+            cc.restore_backup(&data, password, plaintext, tmp)?
         }
     }
 
