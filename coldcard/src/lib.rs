@@ -572,6 +572,32 @@ impl Coldcard {
         .into_ok()
         .map_err(Error::from)
     }
+    /// Restore a backup
+    pub fn restore_backup(
+        &mut self,
+        data: &[u8],
+        // Backup is .7z encrypted with custom password
+        custom_pwd: bool,
+        // Backup is clear-text (dev)
+        plaintext: bool,
+        // force load as tmp, effective only on seed-less CC
+        tmp: bool,
+    ) -> Result<(), Error> {
+        if custom_pwd && plaintext {
+            return Err(Error::RestoreBackupFlags);
+        }
+        let file_sha = self.upload(data, |_, _| {})?;
+
+        self.send(Request::RestoreBackup {
+            length: data.len() as u32,
+            file_sha,
+            custom_pwd,
+            plaintext,
+            tmp,
+        })?
+        .into_ok()
+        .map_err(Error::from)
+    }
 
     /// Get registered descriptor by name.
     pub fn miniscript_get(
@@ -939,6 +965,7 @@ pub enum Error {
     ChecksumMismatch,
     TransmissionFailed,
     TestFailureWithLength(usize),
+    RestoreBackupFlags,
 }
 
 impl std::fmt::Display for Error {

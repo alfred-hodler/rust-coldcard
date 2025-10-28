@@ -106,6 +106,16 @@ pub enum Request {
     GetPassphraseDone,
     CheckMitm,
     StartBackup,
+    RestoreBackup {
+        length: u32,
+        file_sha: [u8; 32],
+        //custom_pwd: (bool) .7z encrypted with custom password
+        custom_pwd: bool,
+        //plaintext:  (bool)  clear-text (dev)
+        plaintext: bool,
+        //tmp         (bool)  force load as tmp, effective only on seed-less CC
+        tmp: bool,
+    },
     EncryptStart {
         device_pubkey: [u8; 64],
         version: Option<u32>,
@@ -432,6 +442,30 @@ impl Request {
             } => {
                 let mut buf = cmd("mspl");
                 buf.extend(name.0);
+                buf
+            }
+            Request::RestoreBackup {
+                length,
+                file_sha,
+                custom_pwd,
+                plaintext,
+                tmp,
+            } => {
+                let mut flags = 0u8;
+                if custom_pwd {
+                    flags |= 1;
+                }
+                if plaintext {
+                    flags |= 2;
+                }
+                if tmp {
+                    flags |= 4;
+                }
+                let mut buf = cmd("rest");
+                buf.extend(length.to_le_bytes());
+                buf.extend(file_sha);
+                buf.push(flags);
+
                 buf
             }
         }
