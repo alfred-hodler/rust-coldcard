@@ -125,6 +125,7 @@ pub enum Request {
         length: u32,
         file_sha: [u8; 32],
         flags: Option<u32>,
+        descriptor_name: Option<DescriptorName>,
     },
     SignMessage {
         raw_msg: Message,
@@ -134,6 +135,9 @@ pub enum Request {
     GetSignedMessage,
     GetBackupFile,
     GetSignedTransaction,
+    MiniscriptPolicy {
+        descriptor_name: DescriptorName,
+    },
     MiniscriptAddress {
         descriptor_name: DescriptorName,
         change: bool,
@@ -253,12 +257,17 @@ impl Request {
                 length,
                 file_sha,
                 flags,
+                descriptor_name: miniscript_name,
             } => {
                 let mut buf = cmd("stxn");
                 let flags = flags.unwrap_or_default();
                 buf.extend(length.to_le_bytes());
                 buf.extend(flags.to_le_bytes());
                 buf.extend(file_sha);
+                if let Some(name) = miniscript_name {
+                    buf.extend((name.0.len() as u8).to_le_bytes());
+                    buf.extend(name.0);
+                }
                 buf
             }
 
@@ -418,6 +427,13 @@ impl Request {
             }
 
             Request::GetStorageLocker => cmd("gslr"),
+            Request::MiniscriptPolicy {
+                descriptor_name: name,
+            } => {
+                let mut buf = cmd("mspl");
+                buf.extend(name.0);
+                buf
+            }
         }
     }
 }
@@ -716,6 +732,21 @@ mod tests {
                 length: 345,
                 file_sha: BYTES_32.to_owned(),
                 flags: Some(STXN_FINALIZE | STXN_SIGNED | STXN_VISUALIZE),
+                descriptor_name: None,
+            },
+        );
+
+        encode_eq(
+            &[
+                115, 116, 120, 110, 89, 1, 0, 0, 7, 0, 0, 0, 82, 246, 129, 254, 167, 146, 135, 174,
+                60, 60, 152, 151, 192, 167, 53, 120, 248, 31, 108, 213, 131, 160, 94, 44, 58, 189,
+                111, 107, 237, 24, 89, 172, 4, 116, 101, 115, 116,
+            ],
+            Request::SignTransaction {
+                length: 345,
+                file_sha: BYTES_32.to_owned(),
+                flags: Some(STXN_FINALIZE | STXN_SIGNED | STXN_VISUALIZE),
+                descriptor_name: Some(DescriptorName::new("test").unwrap()),
             },
         );
 

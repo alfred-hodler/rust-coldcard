@@ -630,12 +630,25 @@ impl Coldcard {
     /// Initiates PSBT signing and causes the Coldcard to prompt the user to confirm.
     /// This does not immediately return a signed tx, use `get_signed_tx` for that.
     pub fn sign_psbt(&mut self, psbt: &[u8], sign_mode: SignMode) -> Result<(), Error> {
+        self.sign_psbt_miniscript(psbt, sign_mode, None)
+    }
+
+    /// Initiates PSBT signing for a miniscript wallet and causes the Coldcard to
+    /// prompt the user to confirm. This does not immediately return a signed tx,
+    /// use `get_signed_tx` for that.
+    pub fn sign_psbt_miniscript(
+        &mut self,
+        psbt: &[u8],
+        sign_mode: SignMode,
+        descriptor_name: Option<DescriptorName>,
+    ) -> Result<(), Error> {
         let file_sha = self.upload(psbt, |_, _| {})?;
 
         self.send(Request::SignTransaction {
             length: psbt.len() as u32,
             file_sha,
             flags: Some(sign_mode as u32),
+            descriptor_name,
         })?
         .into_ok()
         .map_err(Error::from)
@@ -716,6 +729,28 @@ impl Coldcard {
         self.send(Request::GetXPub(path))?
             .into_ascii()
             .map_err(Error::from)
+    }
+
+    /// Gets the BIP-0388 wallet policy of a given wallet
+    pub fn bip388_policy_get(
+        &mut self,
+        descriptor_name: DescriptorName,
+    ) -> Result<Option<String>, Error> {
+        let response = match self.send(Request::MiniscriptPolicy { descriptor_name }) {
+            Ok(response) => response,
+            Err(Error::Decoding(protocol::DecodeError::Protocol(e))) => {
+                // FIXME:
+                if e == "Miniscript wallet not found" {
+                    return Ok(None);
+                } else {
+                    return Err(Error::Decoding(protocol::DecodeError::Protocol(e)));
+                }
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        };
+        response.into_ascii().map(Some).map_err(Error::from)
     }
 }
 
