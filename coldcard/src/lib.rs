@@ -599,6 +599,16 @@ impl Coldcard {
         .map_err(Error::from)
     }
 
+    /// Delete a registered miniscript descriptor
+    pub fn delete_miniscript(&mut self, descriptor_name: DescriptorName) -> Result<(), Error> {
+        if descriptor_name.0.len() > 40 || !descriptor_name.0.is_ascii() {
+            return Err(Error::DescriptorName);
+        }
+        self.send(Request::MiniscriptDelete { descriptor_name })?
+            .into_ok()
+            .map_err(Error::from)
+    }
+
     /// Get registered descriptor by name.
     pub fn miniscript_get(
         &mut self,
@@ -966,6 +976,7 @@ pub enum Error {
     TransmissionFailed,
     TestFailureWithLength(usize),
     RestoreBackupFlags,
+    DescriptorName,
 }
 
 impl std::fmt::Display for Error {

@@ -29,7 +29,7 @@ macro_rules! impl_new_with_range {
     };
 }
 
-pub struct DescriptorName(Vec<u8>);
+pub struct DescriptorName(pub(crate) Vec<u8>);
 pub struct Upload(Vec<u8>);
 pub struct Message(Vec<u8>);
 pub struct Username(Vec<u8>);
@@ -156,6 +156,9 @@ pub enum Request {
     MiniscriptEnroll {
         length: u32,
         file_sha: [u8; 32],
+    },
+    MiniscriptDelete {
+        descriptor_name: DescriptorName,
     },
     MiniscriptGetDescriptor {
         descriptor_name: DescriptorName,
@@ -466,6 +469,11 @@ impl Request {
                 buf.extend(file_sha);
                 buf.push(flags);
 
+                buf
+            }
+            Request::MiniscriptDelete { descriptor_name } => {
+                let mut buf = cmd("msdl");
+                buf.extend(descriptor_name.0);
                 buf
             }
         }
