@@ -877,6 +877,7 @@ fn warn(text: &str) {
     eprintln!("{} {}", prefix.apply_to("WARNING:"), text);
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 enum Error {
     Coldcard(coldcard::Error),

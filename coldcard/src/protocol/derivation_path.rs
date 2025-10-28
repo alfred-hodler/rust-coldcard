@@ -69,7 +69,7 @@ impl std::str::FromStr for Child {
     type Err = Error;
 
     fn from_str(c: &str) -> Result<Self, Self::Err> {
-        let is_hardened = c.chars().last().map_or(false, |l| l == '\'' || l == 'h');
+        let is_hardened = c.chars().last().is_some_and(|l| l == '\'' || l == 'h');
         let i: u32 = (if is_hardened { &c[0..c.len() - 1] } else { c })
             .parse()
             .map_err(|_| Error::InvalidChild)?;

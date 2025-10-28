@@ -250,6 +250,7 @@ impl Coldcard {
         let cc_pk = k256::PublicKey::from_sec1_bytes(&prefixed_cc_pk)?;
         let session_key = session_key(our_sk, cc_pk)?;
 
+        #[allow(deprecated)]
         let (encrypt, decrypt) = {
             use aes::cipher::{generic_array::GenericArray, KeyIvInit};
 

@@ -48,7 +48,7 @@ pub enum MaybeOwned<'a, T> {
     Borrowed(&'a mut T),
 }
 
-impl<'a, T> AsRef<T> for MaybeOwned<'a, T> {
+impl<T> AsRef<T> for MaybeOwned<'_, T> {
     fn as_ref(&self) -> &T {
         match self {
             MaybeOwned::Owned(owned) => owned,
@@ -57,7 +57,7 @@ impl<'a, T> AsRef<T> for MaybeOwned<'a, T> {
     }
 }
 
-impl<'a, T> AsMut<T> for MaybeOwned<'a, T> {
+impl<T> AsMut<T> for MaybeOwned<'_, T> {
     fn as_mut(&mut self) -> &mut T {
         match self {
             MaybeOwned::Owned(owned) => owned,
