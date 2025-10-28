@@ -157,6 +157,7 @@ pub enum Request {
         length: u32,
         file_sha: [u8; 32],
     },
+    MiniscriptList,
     MiniscriptDelete {
         descriptor_name: DescriptorName,
     },
@@ -476,6 +477,7 @@ impl Request {
                 buf.extend(descriptor_name.0);
                 buf
             }
+            Request::MiniscriptList => cmd("msls"),
         }
     }
 }

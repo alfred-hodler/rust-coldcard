@@ -65,3 +65,34 @@ impl<T> AsMut<T> for MaybeOwned<'_, T> {
         }
     }
 }
+
+pub fn parse_string_vec(response: &str) -> Vec<String> {
+    // expected input kind: ["Liana-rkkrtqy6", "Liana-947xsd0w"]
+    let resp = response.replace("\"", "");
+    let end = resp.len() - 1;
+    let resp = resp[1..end].to_string();
+    resp.split(",").map(|s| s.trim().to_string()).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_string_vec() {
+        // 2 entries
+        let response = "[\"Liana-rkkrtqy6\", \"Liana-947xsd0w\"]";
+        let parsed = parse_string_vec(response);
+        assert_eq!(parsed, vec!["Liana-rkkrtqy6", "Liana-947xsd0w"]);
+
+        // 1 entry
+        let response = "[\"solo\"]";
+        let parsed = parse_string_vec(response);
+        assert_eq!(parsed, vec!["solo"]);
+
+        // empty entry
+        let response = "[]";
+        let parsed = parse_string_vec(response);
+        assert_eq!(parsed, vec![""]);
+    }
+}

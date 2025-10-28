@@ -43,7 +43,7 @@ pub mod protocol;
 pub mod util;
 
 use protocol::{DerivationPath, DescriptorName, Request, Response, Username};
-use util::MaybeOwned;
+use util::{parse_string_vec, MaybeOwned};
 
 type Aes256Ctr = ctr::Ctr64BE<aes::Aes256>;
 
@@ -628,6 +628,13 @@ impl Coldcard {
             }
         };
         response.into_ascii().map(Some).map_err(Error::from)
+    }
+
+    /// List miniscript descriptors registered on the device
+    pub fn miniscript_list(&mut self) -> Result<Vec<String>, Error> {
+        let resp = self.send(Request::MiniscriptList)?.into_ascii()?;
+        let miniscripts = parse_string_vec(&resp);
+        Ok(miniscripts)
     }
 
     /// Reboots the Coldcard.
