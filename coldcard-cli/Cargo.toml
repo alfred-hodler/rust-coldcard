@@ -1,7 +1,7 @@
 [package]
 name = "coldcard-cli"
-version = "0.12.3"
-edition = "2021"
+version = "0.12.4"
+edition = "2024"
 authors = ["Alfred Hodler <alfred_hodler@protonmail.com>"]
 license = "MIT"
 repository = "https://github.com/alfred-hodler/rust-coldcard/"
@@ -17,7 +17,7 @@ name = "coldcard"
 path = "src/main.rs"
 
 [dependencies]
-coldcard = { version = "0.12.2", path = "../coldcard" }
+coldcard = { version = "0.12.4", path = "../coldcard" }
 base58 = "0.2.0"
 base64 = "0.21.7"
 clap = { version = "3.2.22", features = ["derive"] }

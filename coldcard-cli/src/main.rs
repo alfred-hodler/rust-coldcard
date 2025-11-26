@@ -4,9 +4,9 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 
-use coldcard::protocol::{self, derivation_path, DescriptorName, Response};
-use coldcard::{firmware, Backup, Options, SignedMessage};
-use coldcard::{util, XpubInfo};
+use coldcard::protocol::{self, DescriptorName, Response, derivation_path};
+use coldcard::{Backup, Options, SignedMessage, firmware};
+use coldcard::{XpubInfo, util};
 
 use clap::Parser;
 
@@ -368,7 +368,9 @@ fn handle(cli: Cli) -> Result<(), Error> {
             }
         }
         (Some(_), None) => {
-            eprintln!("An xpub was passed but there is no secret on the device yet; MITM check not possible");
+            eprintln!(
+                "An xpub was passed but there is no secret on the device yet; MITM check not possible"
+            );
         }
         _ => {}
     }
@@ -691,8 +693,8 @@ fn handle(cli: Cli) -> Result<(), Error> {
                     }
                     None => {
                         warn(
-                        "Cannot determine a good firmware match for your device. Proceed manually."
-                    );
+                            "Cannot determine a good firmware match for your device. Proceed manually.",
+                        );
                         return Ok(());
                     }
                 }
@@ -702,7 +704,7 @@ fn handle(cli: Cli) -> Result<(), Error> {
                     eprintln!(
                         "({i})\t{}\t{}",
                         r.name,
-                        r.is_edge.then_some("(* experimental)").unwrap_or_default()
+                        if r.is_edge { "(* experimental)" } else { "" }
                     );
                 }
 
@@ -1068,8 +1070,7 @@ struct ProgressBar {
 
 impl ProgressBar {
     pub fn new(step: u16, steps: u16, action: &'static str) -> Self {
-        const PROG_TEMPLATE: &str =
-                "{prefix:.bold}: {spinner:.green} [{bar:40.green}] [{percent}%] ({bytes}/{total_bytes})";
+        const PROG_TEMPLATE: &str = "{prefix:.bold}: {spinner:.green} [{bar:40.green}] [{percent}%] ({bytes}/{total_bytes})";
 
         Self {
             pb: indicatif::ProgressBar::new(100)

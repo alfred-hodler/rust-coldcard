@@ -43,7 +43,7 @@ pub mod protocol;
 pub mod util;
 
 use protocol::{DerivationPath, DescriptorName, Request, Response, Username};
-use util::{parse_string_vec, MaybeOwned};
+use util::{MaybeOwned, parse_string_vec};
 
 type Aes256Ctr = ctr::Ctr64BE<aes::Aes256>;
 
@@ -252,7 +252,7 @@ impl Coldcard {
 
         #[allow(deprecated)]
         let (encrypt, decrypt) = {
-            use aes::cipher::{generic_array::GenericArray, KeyIvInit};
+            use aes::cipher::{KeyIvInit, generic_array::GenericArray};
 
             let key = GenericArray::from_slice(&session_key);
             let nonce = GenericArray::from_slice(&[0_u8; 16]);
@@ -295,8 +295,8 @@ impl Coldcard {
     /// Checks if the communication line is undergoing a MITM attack.
     /// Returns `Ok(true)` if MITM is in progress or `Ok(false)` if not.
     pub fn check_mitm(&mut self, expected_xpub: &str) -> Result<bool, Error> {
-        use k256::ecdsa::signature::hazmat::PrehashVerifier;
         use k256::ecdsa::Signature;
+        use k256::ecdsa::signature::hazmat::PrehashVerifier;
 
         let pk = util::decode_xpub(expected_xpub).ok_or(Error::NoSecretOnDevice)?;
         let verifying_key = k256::ecdsa::VerifyingKey::from(pk);

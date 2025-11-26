@@ -6,10 +6,10 @@ pub use derivation_path::DerivationPath;
 use crate::constants::*;
 
 macro_rules! impl_new_with_range {
-    ($thing:ident, $range:expr) => {
+    ($thing:ident, $range:expr_2021) => {
         impl_new_with_range!($thing, $range, 0_u8..);
     };
-    ($thing:ident, $range:expr, $valid_char_range:expr) => {
+    ($thing:ident, $range:expr_2021, $valid_char_range:expr_2021) => {
         impl $thing {
             pub fn new(value: impl AsRef<[u8]>) -> Result<Self, EncodeError> {
                 let value = value.as_ref();
@@ -634,11 +634,7 @@ impl Response {
     /// Attempts to convert the response into the Ok variant. Returns the Err
     /// variant with the response if something else.
     pub fn into_ok(self) -> Result<(), Response> {
-        if self.is_ok() {
-            Ok(())
-        } else {
-            Err(self)
-        }
+        if self.is_ok() { Ok(()) } else { Err(self) }
     }
 }
 
