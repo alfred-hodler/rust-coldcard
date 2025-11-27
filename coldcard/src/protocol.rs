@@ -97,7 +97,7 @@ pub enum AuthMode {
 }
 
 /// Request variants that can be sent to a Coldcard.
-pub enum Request {
+pub(crate) enum Request {
     Logout,
     Reboot,
     Version,

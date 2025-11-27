@@ -282,7 +282,7 @@ impl Coldcard {
     }
 
     /// Sends a request and immediately reads a response.
-    pub fn send(&mut self, request: Request) -> Result<Response, Error> {
+    fn send(&mut self, request: Request) -> Result<Response, Error> {
         send(
             request,
             &mut self.cc,
@@ -402,8 +402,7 @@ impl Coldcard {
         resync(&mut self.cc, &mut self.read_buf)
     }
 
-    // CONVENIENCE FUNCTIONS FOLLOW.
-    // All these can also be achieved by using the send(Request::*) notation
+    // Regular operations follow.
 
     /// Gets an address given a derivation path and address format.
     pub fn address(
@@ -421,6 +420,28 @@ impl Coldcard {
         self.send(Request::BagNumber(None))?
             .into_ascii()
             .map_err(Error::from)
+    }
+
+    /// Gets the BIP-0388 wallet policy of a given wallet
+    pub fn bip388_policy_get(
+        &mut self,
+        descriptor_name: DescriptorName,
+    ) -> Result<Option<String>, Error> {
+        let response = match self.send(Request::MiniscriptPolicy { descriptor_name }) {
+            Ok(response) => response,
+            Err(Error::Decoding(protocol::DecodeError::Protocol(e))) => {
+                // FIXME:
+                if e == "Miniscript wallet not found" {
+                    return Ok(None);
+                } else {
+                    return Err(Error::Decoding(protocol::DecodeError::Protocol(e)));
+                }
+            }
+            Err(e) => {
+                return Err(e);
+            }
+        };
+        response.into_ascii().map(Some).map_err(Error::from)
     }
 
     /// Gets the name of the blockchain the Colcard is set to operate on.
@@ -448,6 +469,16 @@ impl Coldcard {
             .into_ascii()?;
 
         Ok((!secret.is_empty()).then_some(secret))
+    }
+
+    /// Delete a registered miniscript descriptor
+    pub fn delete_miniscript(&mut self, descriptor_name: DescriptorName) -> Result<(), Error> {
+        if descriptor_name.0.len() > 40 || !descriptor_name.0.is_ascii() {
+            return Err(Error::DescriptorName);
+        }
+        self.send(Request::MiniscriptDelete { descriptor_name })?
+            .into_ok()
+            .map_err(Error::from)
     }
 
     /// Deletes a username, if one exists on the Coldcard. Returns `Ok(())` even
@@ -572,42 +603,6 @@ impl Coldcard {
         .into_ok()
         .map_err(Error::from)
     }
-    /// Restore a backup
-    pub fn restore_backup(
-        &mut self,
-        data: &[u8],
-        // Backup is .7z encrypted with custom password
-        custom_pwd: bool,
-        // Backup is clear-text (dev)
-        plaintext: bool,
-        // force load as tmp, effective only on seed-less CC
-        tmp: bool,
-    ) -> Result<(), Error> {
-        if custom_pwd && plaintext {
-            return Err(Error::RestoreBackupFlags);
-        }
-        let file_sha = self.upload(data, |_, _| {})?;
-
-        self.send(Request::RestoreBackup {
-            length: data.len() as u32,
-            file_sha,
-            custom_pwd,
-            plaintext,
-            tmp,
-        })?
-        .into_ok()
-        .map_err(Error::from)
-    }
-
-    /// Delete a registered miniscript descriptor
-    pub fn delete_miniscript(&mut self, descriptor_name: DescriptorName) -> Result<(), Error> {
-        if descriptor_name.0.len() > 40 || !descriptor_name.0.is_ascii() {
-            return Err(Error::DescriptorName);
-        }
-        self.send(Request::MiniscriptDelete { descriptor_name })?
-            .into_ok()
-            .map_err(Error::from)
-    }
 
     /// Get registered descriptor by name.
     pub fn miniscript_get(
@@ -637,9 +632,52 @@ impl Coldcard {
         Ok(miniscripts)
     }
 
+    /// Is there a wallet already that matches M+N and xor(*xfps)?
+    pub fn multisig_check(&mut self, m: u32, n: u32, xfp_xor: u32) -> Result<bool, Error> {
+        self.send(Request::MultiSigCheck { m, n, xfp_xor })?
+            .into_int1()
+            .map(|value| value != 0)
+            .map_err(Error::from)
+    }
+
+    /// Start multisig enrollment (multisig details must already be uploaded,
+    /// this just starts the approval process).
+    pub fn multisig_enroll(&mut self, length: u32, file_sha: [u8; 32]) -> Result<(), Error> {
+        self.send(Request::MultisigEnroll { length, file_sha })?
+            .into_ok()
+            .map_err(Error::from)
+    }
+
     /// Reboots the Coldcard.
     pub fn reboot(mut self) -> Result<(), Error> {
         self.send(Request::Reboot)?.into_ok().map_err(Error::from)
+    }
+
+    /// Restore a backup
+    pub fn restore_backup(
+        &mut self,
+        data: &[u8],
+        // Backup is .7z encrypted with custom password
+        custom_pwd: bool,
+        // Backup is clear-text (dev)
+        plaintext: bool,
+        // force load as tmp, effective only on seed-less CC
+        tmp: bool,
+    ) -> Result<(), Error> {
+        if custom_pwd && plaintext {
+            return Err(Error::RestoreBackupFlags);
+        }
+        let file_sha = self.upload(data, |_, _| {})?;
+
+        self.send(Request::RestoreBackup {
+            length: data.len() as u32,
+            file_sha,
+            custom_pwd,
+            plaintext,
+            tmp,
+        })?
+        .into_ok()
+        .map_err(Error::from)
     }
 
     /// Returns the serial number of this Coldcard.
@@ -654,6 +692,27 @@ impl Coldcard {
             .into_ok()
             .map_err(Error::from)
     }
+
+    /// Shows a P2SH address for a multisig scenario.
+    /// The order of xfp paths must match the order of pubkeys in
+    /// redeem script (after BIP67 sort). This allows for duplicate xfp values.
+    pub fn show_p2sh_address(
+        &mut self,
+        min_signers: u8,
+        xfp_paths: Vec<protocol::XfpPath>,
+        redeem_script: protocol::RedeemScript,
+        address_format: protocol::AddressFormat,
+    ) -> Result<String, Error> {
+        self.send(Request::ShowP2SHAddress {
+            min_signers,
+            xfp_paths,
+            redeem_script,
+            address_format,
+        })?
+        .into_ascii()
+        .map_err(Error::from)
+    }
+
     /// Initiates message signing and causes the Coldcard to prompt the user to confirm.
     /// This does not immediately return a signature, use `get_signed_message` for that.
     pub fn sign_message(
@@ -773,28 +832,6 @@ impl Coldcard {
         self.send(Request::GetXPub(path))?
             .into_ascii()
             .map_err(Error::from)
-    }
-
-    /// Gets the BIP-0388 wallet policy of a given wallet
-    pub fn bip388_policy_get(
-        &mut self,
-        descriptor_name: DescriptorName,
-    ) -> Result<Option<String>, Error> {
-        let response = match self.send(Request::MiniscriptPolicy { descriptor_name }) {
-            Ok(response) => response,
-            Err(Error::Decoding(protocol::DecodeError::Protocol(e))) => {
-                // FIXME:
-                if e == "Miniscript wallet not found" {
-                    return Ok(None);
-                } else {
-                    return Err(Error::Decoding(protocol::DecodeError::Protocol(e)));
-                }
-            }
-            Err(e) => {
-                return Err(e);
-            }
-        };
-        response.into_ascii().map(Some).map_err(Error::from)
     }
 }
 
